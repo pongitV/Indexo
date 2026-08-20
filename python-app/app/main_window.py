@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 from PySide6.QtCore import Qt, QSize, QPoint
-from PySide6.QtGui import QFont, QKeySequence, QShortcut, QIcon
+from PySide6.QtGui import QFont, QKeySequence, QShortcut, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QStackedWidget, QFileDialog, QMessageBox,
@@ -36,17 +36,8 @@ from app.widgets.stats_view import StatsView
 from app.widgets.shortcuts_dialog import ShortcutsGuideDialog
 from app.widgets.smooth_scroll import SmoothScrollArea
 from app.utils.file_ops import move_file_safe, move_folder_safe, restore_session, get_restore_path
+from app.utils.theme_manager import get_app_icon_path, apply_app_theme, is_system_dark_mode
 from app.classification.entity_regex import generate_standard_filename
-
-def is_system_dark_mode() -> bool:
-    try:
-        import winreg
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
-        val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-        winreg.CloseKey(key)
-        return val == 0
-    except Exception:
-        return False
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -86,9 +77,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 840)
         self.setMinimumSize(980, 680)
 
-        icon_path = get_app_dir() / "resources" / "icon.png"
-        if not icon_path.exists():
-            icon_path = Path(__file__).resolve().parent / "resources" / "icon.png"
+        icon_path = get_app_icon_path()
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
@@ -163,31 +152,26 @@ class MainWindow(QMainWindow):
         # Backward compatibility references for tests
         self.rename_card = self.settings_widget.rename_card
         self.prof_card = self.settings_widget.prof_card
-        self.tag_shortcut_card = self.settings_widget.tag_shortcut_card
-
-        # View 3: Dedicated Full-Screen Tag Manager Screen
-        self.tag_manager_widget = TagManagerView()
-        self.tag_manager_widget.back_requested.connect(self.go_back_from_settings_or_tags)
-        self.tag_manager_widget.tags_changed.connect(self.on_tags_changed_by_manager)
-        self.root_stack.addWidget(self.tag_manager_widget)
-
         self.main_layout.addWidget(self.root_stack, 1)
 
-        # 3. Bottom Progress Bar & Status
+        # 3. Bottom Bar
         self.bottom_bar = QHBoxLayout()
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        self.bottom_bar.addWidget(self.progress_bar, 1)
-
         self.lbl_status = QLabel(tr("status.ready"))
         self.lbl_status.setFont(QFont("Inter", 11))
-        self.bottom_bar.addWidget(self.lbl_status)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setFixedHeight(14)
+        self.progress_bar.setMaximumWidth(280)
 
         self.btn_cancel_scan = QPushButton(tr("action.cancel"))
-        self.btn_cancel_scan.clicked.connect(self.cancel_scan)
         self.btn_cancel_scan.setVisible(False)
-        self.bottom_bar.addWidget(self.btn_cancel_scan)
+        self.btn_cancel_scan.setFont(QFont("Inter", 10))
+        self.btn_cancel_scan.clicked.connect(self.cancel_scan)
 
+        self.bottom_bar.addWidget(self.lbl_status)
+        self.bottom_bar.addStretch()
+        self.bottom_bar.addWidget(self.progress_bar)
+        self.bottom_bar.addWidget(self.btn_cancel_scan)
         self.main_layout.addLayout(self.bottom_bar)
 
         # Start on welcome landing screen
@@ -197,45 +181,56 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
 
         layout.addStretch(2)
 
+        # App Icon Logo
+        icon_path = get_app_icon_path()
+        if icon_path.exists():
+            lbl_welcome_icon = QLabel()
+            pix = QPixmap(str(icon_path))
+            if not pix.isNull():
+                lbl_welcome_icon.setPixmap(pix.scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                lbl_welcome_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                layout.addWidget(lbl_welcome_icon)
+
         self.lbl_welcome_logo = QLabel("INDEXO")
         self.lbl_welcome_logo.setObjectName("lbl_before")
-        self.lbl_welcome_logo.setFont(QFont("Inter", 36, QFont.Weight.Bold))
+        self.lbl_welcome_logo.setFont(QFont("Inter", 32, QFont.Weight.Bold))
         self.lbl_welcome_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.lbl_welcome_logo)
 
         self.lbl_welcome_slogan = QLabel(tr("welcome.slogan"))
-        self.lbl_welcome_slogan.setFont(QFont("Inter", 15, QFont.Weight.Medium))
+        self.lbl_welcome_slogan.setFont(QFont("Inter", 14, QFont.Weight.Medium))
         self.lbl_welcome_slogan.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_welcome_slogan.setObjectName("lbl_subtext")
         layout.addWidget(self.lbl_welcome_slogan)
 
-        layout.addSpacing(20)
+        layout.addSpacing(16)
 
         card = QFrame()
         card.setObjectName("card_top")
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(36, 30, 36, 30)
-        card_layout.setSpacing(16)
+        card_layout.setContentsMargins(36, 26, 36, 26)
+        card_layout.setSpacing(14)
         card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.lbl_welcome_prompt = QLabel(tr("welcome.select_prompt"))
-        self.lbl_welcome_prompt.setFont(QFont("Inter", 13))
+        self.lbl_welcome_prompt.setFont(QFont("Inter", 12))
         self.lbl_welcome_prompt.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(self.lbl_welcome_prompt)
 
-        self.btn_welcome_select = QPushButton(f"📁 {tr('welcome.btn_select')}")
+        self.btn_welcome_select = QPushButton(tr("welcome.btn_select"))
         self.btn_welcome_select.setFont(QFont("Inter", 13, QFont.Weight.Bold))
-        self.btn_welcome_select.setStyleSheet("background: #205EA6; color: white; padding: 14px 32px; border-radius: 6px;")
+        self.btn_welcome_select.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_welcome_select.setStyleSheet("background: #205EA6; color: white; padding: 12px 32px; border-radius: 6px;")
         self.btn_welcome_select.clicked.connect(self.select_folder_dialog)
         card_layout.addWidget(self.btn_welcome_select)
 
         self.lbl_drop_hint = QLabel(tr("welcome.drop_hint"))
         self.lbl_drop_hint.setObjectName("lbl_subtext")
-        self.lbl_drop_hint.setFont(QFont("Inter", 12))
+        self.lbl_drop_hint.setFont(QFont("Inter", 11))
         self.lbl_drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(self.lbl_drop_hint)
 
@@ -755,23 +750,8 @@ class MainWindow(QMainWindow):
 
     def apply_theme(self):
         theme = self.settings_mgr.get("theme", "system")
-        if theme == "system":
-            theme = "dark" if is_system_dark_mode() else "light"
-
-        qss_dir = Path(__file__).parent / "resources" / "styles"
-        qss_file = qss_dir / ("dark_theme.qss" if theme == "dark" else "light_theme.qss")
-
-        if qss_file.exists():
-            with open(qss_file, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            # Dynamic Universal Font Scaling
-            font_size = int(self.settings_mgr.get("font_size", 15))
-            content = content.replace("15px", f"{font_size}px")
-            content = content.replace("14px", f"{max(12, font_size - 1)}px")
-            content = content.replace("13px", f"{max(11, font_size - 2)}px")
-
-            self.setStyleSheet(content)
+        font_size = int(self.settings_mgr.get("font_size", 15))
+        apply_app_theme(None, theme, font_size)
 
     def change_language(self, lang: str):
         self.settings_mgr.set("language", lang)

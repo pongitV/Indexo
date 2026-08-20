@@ -63,13 +63,24 @@ def get_db_path() -> Path:
     return get_data_dir() / "indexo.db"
 
 def get_system_rules_path() -> Path:
-    # First check next to app, then in resources/
+    # 1. Custom user system_rules in configs/ next to executable
     app_sys = get_configs_dir() / "system_rules.json"
     if app_sys.exists():
         return app_sys
+    # 2. Custom resources/system_rules.json next to executable
     res_sys = get_app_dir() / "resources" / "system_rules.json"
     if res_sys.exists():
         return res_sys
+    # 3. Bundled resources inside PyInstaller package (_MEIPASS)
+    import sys
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        bundled_sys = Path(sys._MEIPASS) / "resources" / "system_rules.json"
+        if bundled_sys.exists():
+            return bundled_sys
+    # 4. Project dev root
+    dev_sys = Path(__file__).resolve().parent.parent.parent.parent / "resources" / "system_rules.json"
+    if dev_sys.exists():
+        return dev_sys
     return app_sys
 
 

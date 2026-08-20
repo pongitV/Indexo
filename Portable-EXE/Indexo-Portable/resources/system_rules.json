@@ -384,6 +384,54 @@
       "usar_para_automacao": true,
       "idioma": "ptBR",
       "sinonimos": ["Videos", "Movies"]
+    },
+    {
+      "id": "sys_jogos_games",
+      "categoria": "Jogos",
+      "subcategoria": "Jogos e Executáveis",
+      "entidade": "Game",
+      "caminho_fisico": "Jogos",
+      "origem": "system",
+      "categoria_key": "cat.jogos",
+      "palavras_chave": ["game", "games", "jogo", "jogos", "steam", "launcher", "rom", "savegame", "mods", "gamestate", "unityplayer", "unreal"],
+      "regex": ["\\b(game|games|jogo|jogos|steamapps)\\b"],
+      "extensoes": [".exe", ".pak", ".pck", ".vpk", ".unity3d", ".wad", ".sav", ".rom", ".iso", ".nds", ".gba", ".nsp", ".xci"],
+      "confianca_base": 0.95,
+      "usar_para_automacao": true,
+      "idioma": "ptBR",
+      "sinonimos": ["Games", "Video Games"]
+    },
+    {
+      "id": "sys_software_apps",
+      "categoria": "Aplicativos",
+      "subcategoria": "Softwares e Ferramentas",
+      "entidade": "Software",
+      "caminho_fisico": "Aplicativos",
+      "origem": "system",
+      "categoria_key": "cat.aplicativos",
+      "palavras_chave": ["setup", "installer", "software", "aplicativo", "programa", "portable", "app"],
+      "regex": ["\\b(setup|installer|instalador|portable)\\b"],
+      "extensoes": [".exe", ".msi"],
+      "confianca_base": 0.90,
+      "usar_para_automacao": true,
+      "idioma": "ptBR",
+      "sinonimos": ["Applications", "Software", "Apps"]
+    },
+    {
+      "id": "sys_projetos_codigo",
+      "categoria": "Projetos e Código",
+      "subcategoria": "Desenvolvimento",
+      "entidade": "Código",
+      "caminho_fisico": "Projetos",
+      "origem": "system",
+      "categoria_key": "cat.projetos_codigo",
+      "palavras_chave": ["project", "projeto", "src", "source", "repository", "node_modules", "target", "build"],
+      "regex": ["\\b(package\\.json|cargo\\.toml|pyproject\\.toml|cmakelists\\.txt)\\b"],
+      "extensoes": [".py", ".rs", ".js", ".ts", ".jsx", ".tsx", ".c", ".cpp", ".h", ".cs", ".go", ".java"],
+      "confianca_base": 0.92,
+      "usar_para_automacao": true,
+      "idioma": "ptBR",
+      "sinonimos": ["Projects & Code", "Development"]
     }
   ]
 }

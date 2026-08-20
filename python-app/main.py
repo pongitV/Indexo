@@ -11,6 +11,7 @@ if str(sys_path) not in sys.path:
     sys.path.insert(0, str(sys_path))
 
 from app.utils.logger_setup import setup_logger
+from app.utils.theme_manager import apply_app_theme, get_app_icon_path
 from app.config.settings_manager import (
     get_app_dir, get_data_dir, get_configs_dir, get_db_path, SettingsManager
 )
@@ -32,11 +33,12 @@ def main():
     app.setOrganizationName("Indexo")
 
     # Set Application Icon
-    icon_path = get_app_dir() / "resources" / "icon.png"
-    if not icon_path.exists():
-        icon_path = Path(__file__).resolve().parent / "app" / "resources" / "icon.png"
+    icon_path = get_app_icon_path()
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
+
+    # Apply Global Flexoki Theme
+    apply_app_theme(app)
 
     logger = setup_logger()
     logger.info("Starting Indexo on Python {}", sys.version)

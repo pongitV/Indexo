@@ -37,11 +37,16 @@ class LanguageManager:
 
 
     def get_i18n_dir(self) -> Path:
-        # Check resources/i18n in app dir
+        # 1. Custom resources/i18n next to executable
         d = get_app_dir() / "resources" / "i18n"
         if d.exists():
             return d
-        # Check inside package
+        # 2. Bundled resources inside PyInstaller package (_MEIPASS)
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            d_bundled = Path(sys._MEIPASS) / "resources" / "i18n"
+            if d_bundled.exists():
+                return d_bundled
+        # 3. Check inside package / dev root
         d2 = Path(__file__).resolve().parent.parent.parent.parent / "resources" / "i18n"
         if d2.exists():
             return d2

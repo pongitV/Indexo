@@ -132,7 +132,7 @@ def build():
         print(f"Installing {latest_wheel.name}...")
         subprocess.run([sys.executable, "-m", "pip", "install", str(latest_wheel), "--force-reinstall"], check=True)
 
-    print("=== 2. Packaging Portable App with PyInstaller ===")
+    print("=== 2. Packaging 100% Standalone Portable App with PyInstaller (--onefile) ===")
     main_py = root / "python-app" / "main.py"
     dist_temp = root / "build_dist"
     version_file = dist_temp / "version_info.txt"
@@ -142,8 +142,9 @@ def build():
         sys.executable, "-m", "PyInstaller",
         "--name=Indexo",
         "--noconfirm",
-        "--onedir",
+        "--onefile",
         "--windowed",
+        "--collect-all=indexo_core",
         f"--icon={root / 'resources' / 'icon.ico'}",
         f"--version-file={version_file}",
         f"--distpath={dist_temp}",
@@ -158,27 +159,22 @@ def build():
     ]
     subprocess.run(cmd, cwd=root, check=True)
 
-    # Move output to Portable-EXE/Indexo-Portable
-    compiled_app_dir = dist_temp / "Indexo"
-    if compiled_app_dir.exists():
-        print(f"Copying bundled files to {portable_dir}...")
-        for item in compiled_app_dir.glob("*"):
-            dest = portable_dir / item.name
-            if item.is_dir():
-                if dest.exists():
-                    shutil.rmtree(dest, ignore_errors=True)
-                shutil.copytree(item, dest, dirs_exist_ok=True)
-            else:
-                copied = False
-                for attempt in range(5):
-                    try:
-                        shutil.copy2(item, dest)
-                        copied = True
-                        break
-                    except PermissionError:
-                        time.sleep(0.5)
-                if not copied:
-                    shutil.copy2(item, dest)
+    # Move standalone executable to Portable-EXE and Portable-EXE/Indexo-Portable
+    compiled_exe = dist_temp / "Indexo.exe"
+    if compiled_exe.exists():
+        # Remove old _internal if left from previous onedir builds
+        old_internal = portable_dir / "_internal"
+        if old_internal.exists():
+            shutil.rmtree(old_internal, ignore_errors=True)
+
+        print(f"Copying standalone executable to {portable_dir / 'Indexo.exe'}...")
+        shutil.copy2(compiled_exe, portable_dir / "Indexo.exe")
+        
+        # Also copy single standalone executable directly to Portable-EXE/
+        standalone_dest = root / "Portable-EXE" / "Indexo.exe"
+        shutil.copy2(compiled_exe, standalone_dest)
+        print(f"Copying standalone executable to {standalone_dest}...")
+
         shutil.rmtree(dist_temp, ignore_errors=True)
 
     # Clean build/ artifacts
@@ -201,9 +197,26 @@ def build():
     if guide_src.exists():
         shutil.copy2(guide_src, portable_dir / "LEIA-ME_GUIA_PORTATIL.md")
 
-    # Empty data and configs folders
-    (portable_dir / "data").mkdir(parents=True, exist_ok=True)
-    (portable_dir / "configs").mkdir(parents=True, exist_ok=True)
+    # Ensure pristine distribution package (clean configs, data, logs)
+    log_file = portable_dir / "indexo.log"
+    if log_file.exists():
+        log_file.unlink(missing_ok=True)
+    
+    data_dir = portable_dir / "data"
+    if data_dir.exists():
+        for f in data_dir.glob("*"):
+            if f.is_file():
+                f.unlink(missing_ok=True)
+    else:
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+    configs_dir = portable_dir / "configs"
+    if configs_dir.exists():
+        for f in configs_dir.glob("*"):
+            if f.is_file():
+                f.unlink(missing_ok=True)
+    else:
+        configs_dir.mkdir(parents=True, exist_ok=True)
 
     # 3. Notify Windows Explorer to refresh icon cache immediately
     try:
@@ -214,8 +227,10 @@ def build():
 
     print("\n=======================================================")
     print("[OK] BUILD CONCLUIDO COM SUCESSO!")
-    print(f"Executavel portatil pronto em:")
-    print(f"-> {portable_dir / 'Indexo.exe'}")
+    print(f"1) Executável Único 100% Portátil (pode copiar apenas este arquivo):")
+    print(f"   -> {root / 'Portable-EXE' / 'Indexo.exe'}")
+    print(f"2) Pacote Portátil Estruturado com Guias:")
+    print(f"   -> {portable_dir / 'Indexo.exe'}")
     print("=======================================================\n")
 
 if __name__ == "__main__":
