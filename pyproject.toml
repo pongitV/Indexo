@@ -24,7 +24,6 @@ manifest-path = "rust-core/Cargo.toml"
 module-name = "indexo_core"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
 pythonpath = ["python-app"]
 addopts = "-ra -q"
 
@@ -38,7 +37,6 @@ exclude = [
     "build_dist",
     "target",
     "Portable-EXE",
-    "tests/fixtures",
 ]
 
 [tool.ruff.lint]
@@ -61,7 +59,6 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 exclude = [
-    "tests/fixtures",
     "build",
     "build_dist",
     "target",

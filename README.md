@@ -15,7 +15,6 @@
   <img src="https://img.shields.io/badge/UI-PySide6%20(Qt)-green.svg" alt="UI Framework">
   <img src="https://img.shields.io/badge/Engine-Zero--Hardcode%20%26%20Adaptive-purple.svg" alt="Engine">
   <img src="https://img.shields.io/badge/License-GNU%20GPLv3-yellow.svg" alt="License">
-  <img src="https://img.shields.io/badge/Tests-43%20Passed-brightgreen.svg" alt="Tests">
 </p>
 
 ---
@@ -109,13 +108,9 @@ Indexo/
 │
 ├── scripts/                    # Automação e utilitários de desenvolvimento
 │   ├── dev_run.py              # Inicialização rápida em ambiente de desenvolvimento
-│   ├── check.py                # Diagnóstico unificado de integridade e testes
+│   ├── check.py                # Diagnóstico unificado de integridade e regras
 │   ├── build.py                # Pipeline de compilação e empacotamento portátil
-│   └── generate_test_dataset.py# Gerador de massa de testes para benchmark
-│
-├── tests/                      # Suíte de testes automatizados (43+ testes)
-│   ├── conftest.py             # Fixtures compartilhadas do Pytest / Qt
-│   └── python/                 # Testes de similaridade, WAL, tags e categorias
+│   └── generate_test_dataset.py# Gerador de massa de testes sintética
 │
 └── Portable-EXE/               # Distribuição portátil consolidada
     └── Indexo-Portable/        # Pacote pronto para execução no Windows
@@ -172,15 +167,11 @@ python scripts/dev_run.py
 
 ---
 
-## Suíte de Testes Automatizados
+## Verificação e Diagnóstico de Qualidade
 
-Para executar a suíte completa de testes de regressão, garantia de similaridade, WAL e aprendizado dinâmico:
+Para executar o diagnóstico unificado de integridade de regras semânticas, paridade de internacionalização (i18n) e testes nativos em Rust:
 
 ```powershell
-# Execução completa com pytest
-python -m pytest tests/
-
-# Ou verificação unificada de código, i18n e testes nativos
 python scripts/check.py
 ```
 

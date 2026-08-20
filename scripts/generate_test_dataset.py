@@ -14,9 +14,7 @@ import argparse
 
 DEFAULT_OUTPUT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "tests",
-    "fixtures",
-    "sample_dataset",
+    "pasta_testes_indexo",
 )
 
 def create_pdf(filepath: str, title: str, content_lines: list[str]):

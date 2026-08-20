@@ -47,7 +47,7 @@ Gera uma base de testes sintetica e diversificada para avaliacao de regras seman
 - Estrutura hierarquica mista para testes de varredura recursiva.
 
 ```powershell
-# Geracao padrao em tests/fixtures/sample_dataset/
+# Geracao padrao em pasta_testes_indexo/
 python scripts/generate_test_dataset.py
 
 # Geracao em caminho customizado:

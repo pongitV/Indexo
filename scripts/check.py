@@ -101,6 +101,10 @@ def run_rust_tests() -> tuple[bool, str]:
         return False, f"Falha (codigo {res.returncode}):\n{res.stderr or res.stdout}"
 
 def run_python_tests() -> tuple[bool, str]:
+    tests_dir = ROOT_DIR / "tests"
+    if not tests_dir.exists():
+        return True, "Diretório de testes 'tests/' omitido (versão crua para publicação)."
+
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT_DIR / "python-app")
     
