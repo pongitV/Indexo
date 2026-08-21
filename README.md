@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <b>🇧🇷 Português</b> | <a href="README_EN.md">🇺🇸 English</a>
+  <b>Português</b> | <a href="README_EN.md">English</a>
 </p>
 
 ---
