@@ -17,6 +17,10 @@
   <img src="https://img.shields.io/badge/License-GNU%20GPLv3-yellow.svg" alt="License">
 </p>
 
+<p align="center">
+  <b>🇧🇷 Português</b> | <a href="README_EN.md">🇺🇸 English</a>
+</p>
+
 ---
 
 ## Sobre o Projeto
@@ -73,7 +77,8 @@ Indexo/
 ├── rustfmt.toml                # Formatação padrão de código Rust
 ├── LICENSE                     # Licença GNU General Public License v3.0
 ├── CHANGELOG.md                # Histórico de alterações e versões (SemVer)
-├── README.md                   # Apresentação do projeto e guia do usuário
+├── README.md                   # Apresentação do projeto e guia do usuário (Português)
+├── README_EN.md                # Apresentação do projeto e guia do usuário (Inglês)
 │
 ├── rust-core/                  # Motor nativo em Rust (PyO3)
 │   ├── Cargo.toml              # Dependências e otimizações de compilação
