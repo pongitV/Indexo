@@ -3,6 +3,7 @@ pub mod content_extract;
 pub mod embeddings;
 pub mod llm_local;
 pub mod rules;
+pub mod renamer;
 
 #[cfg(test)]
 mod tests {

@@ -16,11 +16,13 @@
 
   export let node: TreeNodeData;
   export let expandedIds: Set<string>;
+  export let highlightedNodeId: string | null = null;
   export let onToggleFolder: (id: string) => void;
   export let onFileContextMenu: (e: MouseEvent, file: ClassifiedFile) => void;
   export let onFolderContextMenu: ((e: MouseEvent, node: TreeNodeData) => void) | undefined = undefined;
 
   $: isExpanded = expandedIds.has(node.id);
+  $: isHighlighted = highlightedNodeId === node.id;
 
   function getFileExtension(filename: string): string {
     const parts = filename.split(".");
@@ -90,11 +92,12 @@
 </script>
 
 {#if node.isFolder}
-  <div class="tree-branch">
+  <div class="tree-branch" id={node.id}>
     <!-- Folder Row -->
     <div
       class="tree-row folder-row"
       class:expanded={isExpanded}
+      class:highlighted={isHighlighted}
       role="button"
       tabindex="0"
       title="Pasta: {node.name} ({node.fileCount} {node.fileCount === 1 ? 'arquivo' : 'arquivos'})&#10;Clique para {isExpanded ? 'recolher' : 'expandir'} | Clique direito para opções"
@@ -137,6 +140,7 @@
           <FileTreeNode
             node={child}
             {expandedIds}
+            {highlightedNodeId}
             {onToggleFolder}
             {onFileContextMenu}
             {onFolderContextMenu}
@@ -150,9 +154,11 @@
   {@const ext = getFileExtension(node.name)}
   <div
     class="tree-row file-row"
+    id={node.id}
+    class:highlighted={isHighlighted}
     role="button"
     tabindex="0"
-    title="{node.name}&#10;Tag / Categoria: {node.file?.suggested_category ?? 'Sem tag'}&#10;Caminho: {node.fullPath}&#10;👉 Clique com o botão direito do mouse para inspecionar/mudar a tag"
+    title="{node.name}&#10;Tag / Categoria: {node.file?.suggested_category ?? 'Sem tag'}&#10;Caminho: {node.fullPath}&#10;Clique com o botão direito do mouse para opções"
     on:contextmenu={handleRightClick}
     on:click={handleRightClick}
     on:keydown={(e) => (e.key === "Enter" || e.key === " ") && handleRightClick(e as any)}
@@ -172,7 +178,7 @@
     <span class="row-label file-label truncate">{node.name}</span>
 
     <!-- Right-click prompt badge -->
-    <span class="right-click-hint">botão direito 🏷️</span>
+    <span class="right-click-hint">opções</span>
   </div>
 {/if}
 
@@ -313,5 +319,23 @@
     margin-left: 12px;
     padding-left: 8px;
     gap: 0.15rem;
+  }
+
+  .tree-row.highlighted {
+    background: rgba(59, 130, 246, 0.25) !important;
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 16px var(--accent-glow) !important;
+    animation: highlightPulse 1.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes highlightPulse {
+    0% {
+      transform: scale(1);
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+    100% {
+      transform: scale(1.02);
+      box-shadow: 0 0 20px var(--accent-primary);
+    }
   }
 </style>

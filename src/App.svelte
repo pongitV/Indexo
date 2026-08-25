@@ -14,7 +14,9 @@
   import FolderSelect from "./routes/FolderSelect.svelte";
   import Scanning from "./routes/Scanning.svelte";
   import Preview from "./routes/Preview.svelte";
+  import Renamer from "./routes/Renamer.svelte";
   import TagManager from "./routes/TagManager.svelte";
+  import CategoryManager from "./routes/CategoryManager.svelte";
   import Settings from "./routes/Settings.svelte";
 
   onMount(async () => {
@@ -67,12 +69,6 @@
         </div>
         <div class="logo-text">
           <span class="brand-title">{$_("app.title")}</span>
-          <span class="offline-badge">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="12" r="10"></circle>
-            </svg>
-            100% Offline
-          </span>
         </div>
       </div>
     </div>
@@ -111,6 +107,18 @@
 
       <button
         class="nav-btn"
+        class:active={$currentView === "renamer"}
+        on:click={() => currentView.set("renamer")}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+        {$_("nav.renamer")}
+      </button>
+
+      <button
+        class="nav-btn"
         class:active={$currentView === "tags"}
         on:click={() => currentView.set("tags")}
       >
@@ -119,6 +127,18 @@
           <line x1="7" y1="7" x2="7.01" y2="7"></line>
         </svg>
         {$_("nav.tags")}
+      </button>
+
+      <button
+        class="nav-btn"
+        class:active={$currentView === "categories"}
+        on:click={() => currentView.set("categories")}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          <polyline points="2 10 22 10"></polyline>
+        </svg>
+        {$_("nav.categories")}
       </button>
 
       <button
@@ -172,8 +192,12 @@
       <Scanning />
     {:else if $currentView === "preview"}
       <Preview />
+    {:else if $currentView === "renamer"}
+      <Renamer />
     {:else if $currentView === "tags"}
       <TagManager />
+    {:else if $currentView === "categories"}
+      <CategoryManager />
     {:else if $currentView === "settings"}
       <Settings />
     {/if}
@@ -269,14 +293,6 @@
     -webkit-text-fill-color: transparent;
   }
 
-  .offline-badge {
-    font-size: 0.68rem;
-    font-weight: 600;
-    color: var(--accent-emerald);
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
 
   .header-nav {
     display: flex;

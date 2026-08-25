@@ -11,7 +11,7 @@
   } from "../lib/api";
   import { showToast } from "../lib/stores";
 
-  let tags: Category[] = [];
+  let categories: Category[] = [];
   let searchQuery = "";
   let activeTab: "all" | "manual" | "auto" = "all";
   let isLoading = true;
@@ -22,10 +22,10 @@
   let showMergeModal = false;
   let showDeleteModal = false;
 
-  let activeTag: Category | null = null;
+  let activeCategory: Category | null = null;
   let inputName = "";
   let inputColor = "#3b82f6";
-  let selectedTargetTagId = "";
+  let selectedTargetCategoryId = "";
 
   const presetColors = [
     "#3b82f6", "#06b6d4", "#10b981", "#84cc16",
@@ -34,25 +34,25 @@
   ];
 
   onMount(async () => {
-    await fetchTags();
+    await fetchCategories();
   });
 
-  async function fetchTags() {
+  async function fetchCategories() {
     isLoading = true;
     try {
-      tags = await listCategories();
+      categories = await listCategories();
     } catch (err: any) {
-      showToast("Erro ao carregar tags: " + err, "error");
+      showToast("Erro ao carregar categorias: " + err, "error");
     } finally {
       isLoading = false;
     }
   }
 
-  $: filteredTags = tags.filter((t) => {
-    if (activeTab === "manual" && t.created_by !== "user") return false;
-    if (activeTab === "auto" && t.created_by !== "auto") return false;
+  $: filteredCategories = categories.filter((c) => {
+    if (activeTab === "manual" && c.created_by !== "user") return false;
+    if (activeTab === "auto" && c.created_by !== "auto") return false;
     if (!searchQuery.trim()) return true;
-    return t.name.toLowerCase().includes(searchQuery.toLowerCase());
+    return c.name.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
   function openNewModal() {
@@ -61,22 +61,22 @@
     showNewModal = true;
   }
 
-  function openRenameModal(tag: Category) {
-    activeTag = tag;
-    inputName = tag.name;
-    inputColor = tag.color ?? "#3b82f6";
+  function openRenameModal(cat: Category) {
+    activeCategory = cat;
+    inputName = cat.name;
+    inputColor = cat.color ?? "#3b82f6";
     showRenameModal = true;
   }
 
-  function openMergeModal(tag: Category) {
-    activeTag = tag;
-    const remaining = tags.filter((t) => t.id !== tag.id);
-    selectedTargetTagId = remaining[0]?.id || "";
+  function openMergeModal(cat: Category) {
+    activeCategory = cat;
+    const remaining = categories.filter((c) => c.id !== cat.id);
+    selectedTargetCategoryId = remaining[0]?.id || "";
     showMergeModal = true;
   }
 
-  function openDeleteModal(tag: Category) {
-    activeTag = tag;
+  function openDeleteModal(cat: Category) {
+    activeCategory = cat;
     showDeleteModal = true;
   }
 
@@ -85,56 +85,56 @@
     try {
       await createCategory(inputName.trim(), inputColor);
       showNewModal = false;
-      showToast("Tag criada com sucesso!", "success");
-      await fetchTags();
+      showToast("Categoria criada com sucesso!", "success");
+      await fetchCategories();
     } catch (err: any) {
-      showToast("Erro ao criar tag: " + err, "error");
+      showToast("Erro ao criar categoria: " + err, "error");
     }
   }
 
   async function handleRename() {
-    if (!activeTag || !inputName.trim()) return;
+    if (!activeCategory || !inputName.trim()) return;
     try {
-      await renameCategory(activeTag.id, inputName.trim());
+      await renameCategory(activeCategory.id, inputName.trim());
       showRenameModal = false;
-      showToast("Tag renomeada com sucesso!", "success");
-      await fetchTags();
+      showToast("Categoria renomeada com sucesso!", "success");
+      await fetchCategories();
     } catch (err: any) {
-      showToast("Erro ao renomear tag: " + err, "error");
+      showToast("Erro ao renomear categoria: " + err, "error");
     }
   }
 
   async function handleMerge() {
-    if (!activeTag || !selectedTargetTagId) return;
+    if (!activeCategory || !selectedTargetCategoryId) return;
     try {
-      await mergeCategories(activeTag.id, selectedTargetTagId);
+      await mergeCategories(activeCategory.id, selectedTargetCategoryId);
       showMergeModal = false;
-      showToast("Tags mescladas com sucesso!", "success");
-      await fetchTags();
+      showToast("Categorias mescladas com sucesso!", "success");
+      await fetchCategories();
     } catch (err: any) {
-      showToast("Erro ao mesclar tags: " + err, "error");
+      showToast("Erro ao mesclar categorias: " + err, "error");
     }
   }
 
   async function handleDelete() {
-    if (!activeTag) return;
+    if (!activeCategory) return;
     try {
-      await deleteCategory(activeTag.id);
+      await deleteCategory(activeCategory.id);
       showDeleteModal = false;
-      showToast("Tag excluída com sucesso!", "success");
-      await fetchTags();
+      showToast("Categoria excluída com sucesso!", "success");
+      await fetchCategories();
     } catch (err: any) {
-      showToast("Erro ao excluir tag: " + err, "error");
+      showToast("Erro ao excluir categoria: " + err, "error");
     }
   }
 </script>
 
-<div class="tags-view">
-  <!-- Header with search & new tag CTA -->
-  <div class="tags-header">
+<div class="category-view">
+  <!-- Header with search & new category CTA -->
+  <div class="category-header">
     <div class="header-titles">
-      <h1>{$_("tags.manage")}</h1>
-      <p class="subtitle">{$_("tags.subtitle")}</p>
+      <h1>{$_("categories.manage")}</h1>
+      <p class="subtitle">{$_("categories.subtitle")}</p>
     </div>
 
     <div class="header-actions">
@@ -158,7 +158,7 @@
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
-        {$_("tags.new")}
+        {$_("categories.new")}
       </button>
     </div>
   </div>
@@ -170,61 +170,61 @@
       class:active={activeTab === "all"}
       on:click={() => (activeTab = "all")}
     >
-      {$_("tags.tab.all")}
-      <span class="tab-count">{tags.length}</span>
+      {$_("categories.tab.all")}
+      <span class="tab-count">{categories.length}</span>
     </button>
     <button
       class="tab-btn"
       class:active={activeTab === "manual"}
       on:click={() => (activeTab = "manual")}
     >
-      {$_("tags.tab.manual")}
-      <span class="tab-count">{tags.filter(t => t.created_by === "user").length}</span>
+      {$_("categories.tab.manual")}
+      <span class="tab-count">{categories.filter(c => c.created_by === "user").length}</span>
     </button>
     <button
       class="tab-btn"
       class:active={activeTab === "auto"}
       on:click={() => (activeTab = "auto")}
     >
-      {$_("tags.tab.auto")}
-      <span class="tab-count">{tags.filter(t => t.created_by === "auto").length}</span>
+      {$_("categories.tab.auto")}
+      <span class="tab-count">{categories.filter(c => c.created_by === "auto").length}</span>
     </button>
   </div>
 
-  <!-- Tag Cards Grid -->
-  <div class="tags-container">
+  <!-- Category Cards Grid -->
+  <div class="categories-container">
     {#if isLoading}
-      <div class="empty-state">Carregando tags...</div>
-    {:else if filteredTags.length === 0}
-      <div class="empty-state">Nenhuma tag encontrada.</div>
+      <div class="empty-state">Carregando categorias...</div>
+    {:else if filteredCategories.length === 0}
+      <div class="empty-state">Nenhuma categoria encontrada.</div>
     {:else}
-      <div class="tags-grid">
-        {#each filteredTags as tag (tag.id)}
-          <div class="tag-card glass-panel" style="border-top: 3px solid {tag.color ?? '#3b82f6'}">
-            <div class="tag-main">
-              <div class="tag-title-row" title={tag.name}>
-                <span class="tag-dot" style="background: {tag.color ?? '#3b82f6'}"></span>
-                <span class="tag-name">{tag.name}</span>
+      <div class="categories-grid">
+        {#each filteredCategories as cat (cat.id)}
+          <div class="cat-card glass-panel" style="border-top: 3px solid {cat.color ?? '#3b82f6'}">
+            <div class="cat-main">
+              <div class="cat-title-row" title={cat.name}>
+                <span class="cat-dot" style="background: {cat.color ?? '#3b82f6'}"></span>
+                <span class="cat-name">{cat.name}</span>
               </div>
-              <div class="tag-meta-row">
-                <span class="tag-origin-badge {tag.created_by}">
-                  {tag.created_by === "auto" ? $_("tags.created_by_auto") : $_("tags.created_by_user")}
+              <div class="cat-meta-row">
+                <span class="cat-origin-badge {cat.created_by}">
+                  {cat.created_by === "auto" ? $_("categories.created_by_auto") : $_("categories.created_by_user")}
                 </span>
-                <span class="tag-file-count">
-                  {$_("tags.files_count", { values: { count: tag.file_count } })}
+                <span class="cat-file-count">
+                  {$_("categories.files_count", { values: { count: cat.file_count } })}
                 </span>
               </div>
             </div>
 
-            <div class="tag-actions-row">
-              <button class="action-btn" title={$_("tags.rename")} on:click={() => openRenameModal(tag)}>
+            <div class="cat-actions-row">
+              <button class="action-btn" title={$_("categories.rename")} on:click={() => openRenameModal(cat)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                 </svg>
               </button>
 
-              <button class="action-btn" title={$_("tags.merge")} on:click={() => openMergeModal(tag)}>
+              <button class="action-btn" title={$_("categories.merge")} on:click={() => openMergeModal(cat)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="16 3 21 3 21 8"></polyline>
                   <line x1="4" y1="20" x2="21" y2="3"></line>
@@ -233,7 +233,7 @@
                 </svg>
               </button>
 
-              <button class="action-btn danger" title={$_("tags.delete")} on:click={() => openDeleteModal(tag)}>
+              <button class="action-btn danger" title={$_("categories.delete")} on:click={() => openDeleteModal(cat)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"></polyline>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -247,7 +247,7 @@
   </div>
 </div>
 
-<!-- Modal: Criar Nova Tag -->
+<!-- Modal: Criar Nova Categoria -->
 {#if showNewModal}
   <div
     class="modal-backdrop"
@@ -258,16 +258,16 @@
     on:keydown={(e) => e.key === "Escape" && (showNewModal = false)}
   >
     <div class="modal-card">
-      <h2>{$_("tags.new")}</h2>
+      <h2>{$_("categories.new")}</h2>
       <input
         type="text"
-        placeholder={$_("tags.name")}
+        placeholder={$_("categories.name")}
         bind:value={inputName}
         class="text-input"
         on:keydown={(e) => e.key === "Enter" && handleCreate()}
       />
       <div class="color-palette-select">
-        <label for="tag-color-picker">Cor de Destaque:</label>
+        <label for="cat-color-picker">Cor de Destaque:</label>
         <div class="palette-dots">
           {#each presetColors as col}
             <button
@@ -283,14 +283,14 @@
       </div>
       <div class="modal-actions">
         <button class="secondary-btn" on:click={() => (showNewModal = false)}>Cancelar</button>
-        <button class="primary-btn" on:click={handleCreate}>{$_("tags.create")}</button>
+        <button class="primary-btn" on:click={handleCreate}>{$_("categories.create")}</button>
       </div>
     </div>
   </div>
 {/if}
 
-<!-- Modal: Renomear Tag -->
-{#if showRenameModal && activeTag}
+<!-- Modal: Renomear Categoria -->
+{#if showRenameModal && activeCategory}
   <div
     class="modal-backdrop"
     role="dialog"
@@ -300,10 +300,10 @@
     on:keydown={(e) => e.key === "Escape" && (showRenameModal = false)}
   >
     <div class="modal-card">
-      <h2>{$_("tags.modal.rename_title")}</h2>
+      <h2>{$_("categories.modal.rename_title")}</h2>
       <input
         type="text"
-        placeholder={$_("tags.name")}
+        placeholder={$_("categories.name")}
         bind:value={inputName}
         class="text-input"
         on:keydown={(e) => e.key === "Enter" && handleRename()}
@@ -316,8 +316,8 @@
   </div>
 {/if}
 
-<!-- Modal: Mesclar Tags -->
-{#if showMergeModal && activeTag}
+<!-- Modal: Mesclar Categorias -->
+{#if showMergeModal && activeCategory}
   <div
     class="modal-backdrop"
     role="dialog"
@@ -327,13 +327,13 @@
     on:keydown={(e) => e.key === "Escape" && (showMergeModal = false)}
   >
     <div class="modal-card">
-      <h2>{$_("tags.modal.merge_title")}</h2>
+      <h2>{$_("categories.modal.merge_title")}</h2>
       <p class="modal-subtitle">
-        {$_("tags.modal.merge_desc", { values: { source: activeTag.name } })}
+        {$_("categories.modal.merge_desc", { values: { source: activeCategory.name } })}
       </p>
-      <select bind:value={selectedTargetTagId} class="select-input">
-        {#each tags.filter((t) => t.id !== activeTag?.id) as targetT}
-          <option value={targetT.id}>{targetT.name} ({targetT.file_count} arquivos)</option>
+      <select bind:value={selectedTargetCategoryId} class="select-input">
+        {#each categories.filter((c) => c.id !== activeCategory?.id) as targetCat}
+          <option value={targetCat.id}>{targetCat.name} ({targetCat.file_count} arquivos)</option>
         {/each}
       </select>
       <div class="modal-actions">
@@ -344,8 +344,8 @@
   </div>
 {/if}
 
-<!-- Modal: Excluir Tag -->
-{#if showDeleteModal && activeTag}
+<!-- Modal: Excluir Categoria -->
+{#if showDeleteModal && activeCategory}
   <div
     class="modal-backdrop"
     role="dialog"
@@ -355,9 +355,9 @@
     on:keydown={(e) => e.key === "Escape" && (showDeleteModal = false)}
   >
     <div class="modal-card">
-      <h2>{$_("tags.modal.delete_title")}</h2>
+      <h2>{$_("categories.modal.delete_title")}</h2>
       <p class="modal-subtitle">
-        {$_("tags.modal.delete_desc", { values: { name: activeTag.name } })}
+        {$_("categories.modal.delete_desc", { values: { name: activeCategory.name } })}
       </p>
       <div class="modal-actions">
         <button class="secondary-btn" on:click={() => (showDeleteModal = false)}>Cancelar</button>
@@ -368,7 +368,7 @@
 {/if}
 
 <style>
-  .tags-view {
+  .category-view {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -380,7 +380,7 @@
     animation: fadeIn 250ms ease-out;
   }
 
-  .tags-header {
+  .category-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -476,21 +476,21 @@
     border-radius: var(--radius-full);
   }
 
-  .tags-container {
+  .categories-container {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
     min-height: 0;
   }
 
-  .tags-grid {
+  .categories-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 1rem;
     padding-bottom: 1rem;
   }
 
-  .tag-card {
+  .cat-card {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -500,12 +500,12 @@
     transition: transform 150ms ease, box-shadow 150ms ease;
   }
 
-  .tag-card:hover {
+  .cat-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
   }
 
-  .tag-title-row {
+  .cat-title-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -514,20 +514,20 @@
     color: var(--text-primary);
   }
 
-  .tag-dot {
+  .cat-dot {
     width: 10px;
     height: 10px;
     border-radius: var(--radius-full);
     flex-shrink: 0;
   }
 
-  .tag-name {
+  .cat-name {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .tag-meta-row {
+  .cat-meta-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -535,27 +535,27 @@
     font-size: 0.75rem;
   }
 
-  .tag-origin-badge {
+  .cat-origin-badge {
     padding: 0.15rem 0.45rem;
     border-radius: var(--radius-sm);
     font-weight: 500;
   }
 
-  .tag-origin-badge.auto {
+  .cat-origin-badge.auto {
     background: rgba(139, 92, 246, 0.15);
     color: #a78bfa;
   }
 
-  .tag-origin-badge.user {
+  .cat-origin-badge.user {
     background: rgba(16, 185, 129, 0.15);
     color: #34d399;
   }
 
-  .tag-file-count {
+  .cat-file-count {
     color: var(--text-muted);
   }
 
-  .tag-actions-row {
+  .cat-actions-row {
     display: flex;
     align-items: center;
     justify-content: flex-end;

@@ -31,6 +31,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::scan::scan_folder,
+            commands::scan::scan_specific_files,
             commands::classify::classify_scanned_files,
             commands::apply::apply_organization,
             commands::apply::undo_last_apply,
@@ -44,6 +45,10 @@ fn main() {
             commands::profile::import_profile,
             commands::profile::get_setting,
             commands::profile::save_setting,
+            commands::system::open_in_explorer,
+            commands::system::get_file_preview,
+            commands::rename::suggest_semantic_names,
+            commands::rename::apply_renames,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Indexo");

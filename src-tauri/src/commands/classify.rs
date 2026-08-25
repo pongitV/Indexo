@@ -17,6 +17,8 @@ pub struct ClassifiedFile {
     pub category_color: Option<String>,
     pub confidence: f32,
     pub tier_used: u8, // 1 = heuristica, 2 = embedding/cluster, 3 = LLM local
+    #[serde(default)]
+    pub size_bytes: u64,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -232,6 +234,7 @@ pub async fn classify_scanned_files(
             category_color: category.color.clone(),
             confidence,
             tier_used: tier,
+            size_bytes: f.size_bytes.max(0) as u64,
         };
 
         final_results.push(classified.clone());

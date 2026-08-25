@@ -24,6 +24,7 @@ export interface ClassifiedFile {
   category_color?: string;
   confidence: number;
   tier_used: number; // 1 = heuristica, 2 = embedding/cluster, 3 = LLM local
+  size_bytes?: number;
 }
 
 export interface ClassifyProgressPayload {
@@ -54,6 +55,10 @@ export interface ApplySummary {
 
 export async function scanFolder(path: string): Promise<ScanSummary> {
   return invoke<ScanSummary>("scan_folder", { path });
+}
+
+export async function scanSpecificFiles(filePaths: string[]): Promise<ScanSummary> {
+  return invoke<ScanSummary>("scan_specific_files", { filePaths });
 }
 
 export async function classifyScannedFiles(sessionId: string): Promise<ClassifiedFile[]> {
@@ -116,6 +121,81 @@ export async function saveSetting(key: string, value: string): Promise<void> {
   return invoke<void>("save_setting", { key, value });
 }
 
+export interface FilePreviewData {
+  filename: string;
+  path: string;
+  file_type: "image" | "text" | "pdf" | "spreadsheet" | "audio" | "video" | "binary";
+  mime_type: string;
+  size_bytes: number;
+  text_content?: string | null;
+  data_url?: string | null;
+  error?: string | null;
+}
+
+export async function openInExplorer(path: string): Promise<void> {
+  return invoke<void>("open_in_explorer", { path });
+}
+
+export async function getFilePreview(path: string): Promise<FilePreviewData> {
+  return invoke<FilePreviewData>("get_file_preview", { path });
+}
+
+export interface RenameConfig {
+  preset: string; // "semantic" | "date_first" | "clean_only" | "custom"
+  separator: string; // "_" | "-" | " " | "."
+  case_style: string; // "title" | "lower" | "upper" | "camel" | "snake" | "kebab"
+  date_format: string; // "YYYY-MM-DD" | "YYYY-MM" | "DD-MM-YYYY" | "none"
+  include_category: boolean;
+  remove_noise: boolean;
+  custom_template?: string | null;
+  structure_order?: string[]; // e.g. ["date", "subject", "clean_name"]
+}
+
+export interface RenameSuggestion {
+  file_id: string;
+  current_path: string;
+  current_filename: string;
+  proposed_filename: string;
+  proposed_path: string;
+  category: string;
+  category_color?: string | null;
+  size_bytes: number;
+  is_modified_by_user: boolean;
+  is_ignored: boolean;
+  has_collision: boolean;
+}
+
+export interface FileRenameCandidate {
+  file_id: string;
+  path: string;
+  filename: string;
+  category: string;
+  category_color?: string | null;
+  size_bytes: number;
+  modified_at?: string | null;
+  text_sample?: string | null;
+}
+
+export interface RenameOperation {
+  file_id: string;
+  from_path: string;
+  to_path: string;
+}
+
+export async function suggestSemanticNames(
+  files: FileRenameCandidate[],
+  config: RenameConfig
+): Promise<RenameSuggestion[]> {
+  return invoke<RenameSuggestion[]>("suggest_semantic_names", { files, config });
+}
+
+export async function applyRenames(
+  sessionId: string,
+  renames: RenameOperation[]
+): Promise<ApplySummary> {
+  return invoke<ApplySummary>("apply_renames", { sessionId, renames });
+}
+
 export function onScanProgress(cb: (payload: ScanProgressPayload) => void): Promise<UnlistenFn> {
   return listen<ScanProgressPayload>("scan://progress", (e) => cb(e.payload));
 }
@@ -123,3 +203,4 @@ export function onScanProgress(cb: (payload: ScanProgressPayload) => void): Prom
 export function onClassifyProgress(cb: (payload: ClassifyProgressPayload) => void): Promise<UnlistenFn> {
   return listen<ClassifyProgressPayload>("classify://progress", (e) => cb(e.payload));
 }
+

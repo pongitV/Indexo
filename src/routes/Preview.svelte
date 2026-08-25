@@ -5,6 +5,7 @@
     classifiedFiles,
     currentSessionId,
     selectedFolder,
+    alsoRenameInOrganization,
     showToast,
   } from "../lib/stores";
   import {
@@ -13,9 +14,15 @@
     recordUserCorrection,
     listCategories,
     createCategory,
+    openInExplorer,
+    getFilePreview,
+    suggestSemanticNames,
     type Category,
     type ClassifiedFile,
     type FileMove,
+    type FilePreviewData,
+    type RenameConfig,
+    type FileRenameCandidate,
   } from "../lib/api";
   import FileTreeNode, { type TreeNodeData } from "../lib/FileTreeNode.svelte";
 
@@ -23,12 +30,32 @@
   let isApplying = false;
   let isUndoing = false;
   let showConfirmModal = false;
-  let showNewTagModal = false;
-  let showCategoryPickerModal = false;
+
+  // Tag & Category Modals State
+  let showTagModal = false;
+  let showCategoryModal = false;
+  let modalSearchQuery = "";
+  let modalActiveTab: "all" | "manual" | "auto" = "all";
+  let modalNewNameInput = "";
+  let modalNewColorInput = "#3b82f6";
+
+  // Rename Modal State
+  let showRenameModal = false;
+  let renamingTargetFile: ClassifiedFile | null = null;
+  let renameModalInput = "";
+  let proposedNamesMap = new Map<string, string>(); // file_id -> suggested_name
+  let userCustomNamesMap = new Map<string, string>(); // file_id -> custom_name
+
+  // Highlighted destination node state
+  let highlightedAfterNodeId: string | null = null;
+
+  // File Preview Modal State
+  let showFilePreviewModal = false;
+  let previewLoading = false;
+  let filePreviewData: FilePreviewData | null = null;
 
   let allCategories: Category[] = [];
   let ignoredFileIds = new Set<string>();
-  let categoryPickerSearch = "";
 
   // Tree expansion state (Set of expanded folder IDs)
   let expandedBeforeIds = new Set<string>();
@@ -43,18 +70,133 @@
     folder: null as TreeNodeData | null,
   };
 
-  // Selected file for reassignment
-  let targetFileForReassign: ClassifiedFile | null = null;
-  let newTagNameInput = "";
+  function handleShowInOrganizedPreview(file: ClassifiedFile) {
+    closeContextMenu();
+    const catName = file.suggested_category || "Outros";
+    expandedAfterIds.add("after-root");
+    expandedAfterIds.add(`after-cat-${catName}`);
+    expandedAfterIds = new Set(expandedAfterIds);
+
+    const targetId = `after-file-${file.file_id}`;
+    highlightedAfterNodeId = targetId;
+
+    setTimeout(() => {
+      const el = document.getElementById(targetId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 60);
+
+    showToast(`Arquivo localizado na pasta '${catName}'`, "info");
+
+    setTimeout(() => {
+      if (highlightedAfterNodeId === targetId) {
+        highlightedAfterNodeId = null;
+      }
+    }, 4000);
+  }
+
+  function handleShowFolderInOrganizedPreview(folder: TreeNodeData) {
+    closeContextMenu();
+    const files = getFolderFiles(folder);
+    if (files.length === 0) return;
+
+    expandedAfterIds.add("after-root");
+    for (const f of files) {
+      const catName = f.suggested_category || "Outros";
+      expandedAfterIds.add(`after-cat-${catName}`);
+    }
+    expandedAfterIds = new Set(expandedAfterIds);
+
+    const firstCat = files[0].suggested_category || "Outros";
+    const targetId = `after-cat-${firstCat}`;
+    highlightedAfterNodeId = targetId;
+
+    setTimeout(() => {
+      const el = document.getElementById(targetId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 60);
+
+    showToast(`${files.length} arquivos localizados no preview organizado`, "info");
+
+    setTimeout(() => {
+      if (highlightedAfterNodeId === targetId) {
+        highlightedAfterNodeId = null;
+      }
+    }, 4000);
+  }
+
+  // Target file(s) for reassignment
+  let targetFilesForReassign: ClassifiedFile[] = [];
+  let targetReassignLabel = "";
+
+  const presetColors = [
+    "#3b82f6", "#06b6d4", "#10b981", "#84cc16",
+    "#f59e0b", "#f97316", "#ef4444", "#ec4899",
+    "#8b5cf6", "#6366f1", "#64748b"
+  ];
 
   onMount(async () => {
     await reloadCategories();
+    if ($alsoRenameInOrganization) {
+      await loadProposedNames();
+    }
   });
 
   async function reloadCategories() {
     try {
       allCategories = await listCategories();
     } catch (_) {}
+  }
+
+  // Quando o toggle de renomear estiver ativo ou mudar, calcula nomes semânticos
+  $: if ($alsoRenameInOrganization && $classifiedFiles.length > 0 && proposedNamesMap.size === 0) {
+    loadProposedNames();
+  }
+
+  async function loadProposedNames() {
+    if ($classifiedFiles.length === 0) return;
+    try {
+      const candidates: FileRenameCandidate[] = $classifiedFiles.map((f) => ({
+        file_id: f.file_id || "",
+        path: f.path || "",
+        filename: f.filename || "",
+        category: f.suggested_category || "Outros",
+        category_color: f.category_color || null,
+        size_bytes: f.size_bytes || 0,
+        modified_at: (f as any).modified_at || null,
+        text_sample: (f as any).text_sample || null,
+      }));
+
+      const config: RenameConfig = {
+        preset: "semantic",
+        separator: "_",
+        case_style: "title",
+        date_format: "YYYY-MM",
+        include_category: true,
+        remove_noise: true,
+        custom_template: null,
+      };
+
+      const res = await suggestSemanticNames(candidates, config);
+      const map = new Map<string, string>();
+      for (const s of res) {
+        map.set(s.file_id, s.proposed_filename);
+      }
+      proposedNamesMap = map;
+    } catch (_) {}
+  }
+
+  function getProposedFilename(file: ClassifiedFile): string {
+    if (userCustomNamesMap.has(file.file_id)) {
+      return userCustomNamesMap.get(file.file_id)!;
+    }
+    if ($alsoRenameInOrganization && proposedNamesMap.has(file.file_id)) {
+      return proposedNamesMap.get(file.file_id)!;
+    }
+    return file.filename;
   }
 
   // Filtragem de arquivos por busca
@@ -75,9 +217,11 @@
     return buildBeforeTree(filteredFiles, rootPath);
   })();
 
-  // Construção da Árvore "Depois" (Estrutura Proposta Organizada por Tags/Categorias)
+  // Construção da Árvore "Depois" (Estrutura Proposta Organizada por Tags/Categorias + Nomes Novos se ativo)
   $: afterTree = (() => {
     const rootPath = $selectedFolder || "";
+    // Trigger reatividade quando nomes propostos ou customizados mudam
+    const _ = [$alsoRenameInOrganization, proposedNamesMap, userCustomNamesMap];
     return buildAfterTree(filteredFiles, rootPath, allCategories);
   })();
 
@@ -95,13 +239,11 @@
     expandedAfterIds = allAfter;
   }
 
-  function collectFolderIds(nodes: TreeNodeData[], set: Set<string>) {
-    for (const node of nodes) {
-      if (node.isFolder) {
-        set.add(node.id);
-        if (node.children) {
-          collectFolderIds(node.children, set);
-        }
+  function collectFolderIds(nodes: TreeNodeData[], acc: Set<string>) {
+    for (const n of nodes) {
+      if (n.isFolder) {
+        acc.add(n.id);
+        if (n.children) collectFolderIds(n.children, acc);
       }
     }
   }
@@ -112,7 +254,7 @@
 
     const rootNode: TreeNodeData = {
       id: "before-root",
-      name: `📁 ${rootName} (Original)`,
+      name: rootName,
       isFolder: true,
       fullPath: rootPath,
       children: [],
@@ -123,29 +265,26 @@
     folderMap.set("", rootNode);
 
     for (const file of files) {
-      const normPath = file.path.replace(/\\/g, "/");
+      const normalizedFilePath = file.path.replace(/\\/g, "/");
       let relPath = "";
-      if (normalizedRoot && normPath.toLowerCase().startsWith(normalizedRoot.toLowerCase())) {
-        relPath = normPath.slice(normalizedRoot.length).replace(/^\/+/, "");
+      if (normalizedFilePath.startsWith(normalizedRoot)) {
+        relPath = normalizedFilePath.substring(normalizedRoot.length).replace(/^\/+/, "");
       } else {
         relPath = file.filename;
       }
 
-      const parts = relPath.split("/").filter(Boolean);
-      if (parts.length === 0) continue;
+      const parts = relPath.split("/");
+      parts.pop(); // Remove o nome do arquivo, sobrando as pastas intermediárias
 
       let currentRel = "";
       let parentNode = rootNode;
 
-      for (let i = 0; i < parts.length - 1; i++) {
-        const seg = parts[i];
-        currentRel = currentRel ? `${currentRel}/${seg}` : seg;
-        const folderId = `before-folder-${currentRel}`;
-
+      for (const segment of parts) {
+        currentRel = currentRel ? `${currentRel}/${segment}` : segment;
         if (!folderMap.has(currentRel)) {
           const newFolder: TreeNodeData = {
-            id: folderId,
-            name: seg,
+            id: `before-dir-${currentRel}`,
+            name: segment,
             isFolder: true,
             fullPath: `${normalizedRoot}/${currentRel}`,
             children: [],
@@ -234,11 +373,13 @@
       }
 
       const catFolder = categoryFolders.get(catName)!;
+      const finalFilename = getProposedFilename(file);
+
       const fileNode: TreeNodeData = {
         id: `after-file-${file.file_id}`,
-        name: file.filename,
+        name: finalFilename,
         isFolder: false,
-        fullPath: `${normalizedRoot}/${catName}/${file.filename}`,
+        fullPath: `${normalizedRoot}/${catName}/${finalFilename}`,
         file,
         fileCount: 1,
       };
@@ -268,12 +409,13 @@
     return [rootNode];
   }
 
-  $: filteredPickerCategories = allCategories.filter((c) => {
-    if (!categoryPickerSearch.trim()) return true;
-    return c.name.toLowerCase().includes(categoryPickerSearch.toLowerCase());
+  $: modalFilteredCategories = allCategories.filter((c) => {
+    if (modalActiveTab === "manual" && c.created_by !== "user") return false;
+    if (modalActiveTab === "auto" && c.created_by !== "auto") return false;
+    if (!modalSearchQuery.trim()) return true;
+    return c.name.toLowerCase().includes(modalSearchQuery.toLowerCase());
   });
 
-  // Toggle individual folders in Before Tree
   function toggleBeforeFolder(id: string) {
     if (expandedBeforeIds.has(id)) {
       expandedBeforeIds.delete(id);
@@ -281,6 +423,15 @@
       expandedBeforeIds.add(id);
     }
     expandedBeforeIds = new Set(expandedBeforeIds);
+  }
+
+  function toggleAfterFolder(id: string) {
+    if (expandedAfterIds.has(id)) {
+      expandedAfterIds.delete(id);
+    } else {
+      expandedAfterIds.add(id);
+    }
+    expandedAfterIds = new Set(expandedAfterIds);
   }
 
   function expandAllBefore() {
@@ -293,16 +444,6 @@
     expandedBeforeIds = new Set();
   }
 
-  // Toggle individual folders in After Tree
-  function toggleAfterFolder(id: string) {
-    if (expandedAfterIds.has(id)) {
-      expandedAfterIds.delete(id);
-    } else {
-      expandedAfterIds.add(id);
-    }
-    expandedAfterIds = new Set(expandedAfterIds);
-  }
-
   function expandAllAfter() {
     const all = new Set<string>();
     collectFolderIds(afterTree, all);
@@ -313,12 +454,28 @@
     expandedAfterIds = new Set();
   }
 
-  // Right-click context menu handlers
+  // Extrair todos os arquivos de um nó ou pasta
+  function getFolderFiles(folder: TreeNodeData): ClassifiedFile[] {
+    const files: ClassifiedFile[] = [];
+    function traverse(node: TreeNodeData) {
+      if (!node.isFolder && node.file) {
+        files.push(node.file);
+      } else if (node.children) {
+        for (const child of node.children) {
+          traverse(child);
+        }
+      }
+    }
+    traverse(folder);
+    return files;
+  }
+
+  // Handlers do menu de clique direito
   function openFileContextMenu(e: MouseEvent, file: ClassifiedFile) {
     contextMenu = {
       visible: true,
       x: Math.min(e.clientX, window.innerWidth - 300),
-      y: Math.min(e.clientY, window.innerHeight - 340),
+      y: Math.min(e.clientY, window.innerHeight - 420),
       file,
       folder: null,
     };
@@ -328,7 +485,7 @@
     contextMenu = {
       visible: true,
       x: Math.min(e.clientX, window.innerWidth - 300),
-      y: Math.min(e.clientY, window.innerHeight - 260),
+      y: Math.min(e.clientY, window.innerHeight - 420),
       file: null,
       folder,
     };
@@ -338,6 +495,102 @@
     contextMenu.visible = false;
   }
 
+  // Ações do menu de contexto
+  async function handleOpenFilePreview(path: string) {
+    closeContextMenu();
+    previewLoading = true;
+    showFilePreviewModal = true;
+    filePreviewData = null;
+    try {
+      filePreviewData = await getFilePreview(path);
+    } catch (err: any) {
+      showToast("Erro ao carregar pré-visualização: " + err, "error");
+    } finally {
+      previewLoading = false;
+    }
+  }
+
+  async function handleOpenInExplorer(path: string) {
+    closeContextMenu();
+    try {
+      await openInExplorer(path);
+    } catch (err: any) {
+      showToast("Erro ao abrir no Explorador: " + err, "error");
+    }
+  }
+
+  function handleOpenRenameModal(file: ClassifiedFile) {
+    renamingTargetFile = file;
+    renameModalInput = getProposedFilename(file);
+    closeContextMenu();
+    showRenameModal = true;
+  }
+
+  function handleSaveRenameModal() {
+    if (!renamingTargetFile || !renameModalInput.trim()) return;
+    const clean = renameModalInput.trim();
+    userCustomNamesMap.set(renamingTargetFile.file_id, clean);
+    userCustomNamesMap = new Map(userCustomNamesMap);
+    showRenameModal = false;
+    showToast(`Nome atualizado para '${clean}'`, "success");
+  }
+
+  function handleOpenChangeTag(file: ClassifiedFile) {
+    targetFilesForReassign = [file];
+    targetReassignLabel = file.filename;
+    modalSearchQuery = "";
+    modalActiveTab = "all";
+    modalNewNameInput = "";
+    modalNewColorInput = presetColors[Math.floor(Math.random() * presetColors.length)];
+    closeContextMenu();
+    showTagModal = true;
+  }
+
+  function handleOpenChangeFolderTag(folder: TreeNodeData) {
+    const files = getFolderFiles(folder);
+    if (files.length === 0) {
+      showToast("Nenhum arquivo encontrado nesta pasta.", "info");
+      closeContextMenu();
+      return;
+    }
+    targetFilesForReassign = files;
+    targetReassignLabel = `${folder.name} (${files.length} ${files.length === 1 ? "arquivo" : "arquivos"})`;
+    modalSearchQuery = "";
+    modalActiveTab = "all";
+    modalNewNameInput = "";
+    modalNewColorInput = presetColors[Math.floor(Math.random() * presetColors.length)];
+    closeContextMenu();
+    showTagModal = true;
+  }
+
+  function handleOpenChangeCategory(file: ClassifiedFile) {
+    targetFilesForReassign = [file];
+    targetReassignLabel = file.filename;
+    modalSearchQuery = "";
+    modalActiveTab = "all";
+    modalNewNameInput = "";
+    modalNewColorInput = presetColors[Math.floor(Math.random() * presetColors.length)];
+    closeContextMenu();
+    showCategoryModal = true;
+  }
+
+  function handleOpenChangeFolderCategory(folder: TreeNodeData) {
+    const files = getFolderFiles(folder);
+    if (files.length === 0) {
+      showToast("Nenhum arquivo encontrado nesta pasta.", "info");
+      closeContextMenu();
+      return;
+    }
+    targetFilesForReassign = files;
+    targetReassignLabel = `${folder.name} (${files.length} ${files.length === 1 ? "arquivo" : "arquivos"})`;
+    modalSearchQuery = "";
+    modalActiveTab = "all";
+    modalNewNameInput = "";
+    modalNewColorInput = presetColors[Math.floor(Math.random() * presetColors.length)];
+    closeContextMenu();
+    showCategoryModal = true;
+  }
+
   function handleIgnoreFile(file: ClassifiedFile) {
     ignoredFileIds.add(file.file_id);
     ignoredFileIds = new Set(ignoredFileIds);
@@ -345,18 +598,15 @@
     showToast(`Arquivo '${file.filename}' ignorado da organização.`, "info");
   }
 
-  function handleOpenChangeCategory(file: ClassifiedFile) {
-    targetFileForReassign = file;
-    categoryPickerSearch = "";
+  function handleIgnoreFolder(folder: TreeNodeData) {
+    const files = getFolderFiles(folder);
+    if (files.length === 0) return;
+    for (const f of files) {
+      ignoredFileIds.add(f.file_id);
+    }
+    ignoredFileIds = new Set(ignoredFileIds);
     closeContextMenu();
-    showCategoryPickerModal = true;
-  }
-
-  function handleOpenNewTag(file: ClassifiedFile) {
-    targetFileForReassign = file;
-    newTagNameInput = "";
-    closeContextMenu();
-    showNewTagModal = true;
+    showToast(`${files.length} arquivos da pasta '${folder.name}' ignorados da organização.`, "info");
   }
 
   async function handleAlwaysRule(file: ClassifiedFile) {
@@ -369,16 +619,19 @@
     }
   }
 
-  async function assignCategoryToFile(category: Category) {
-    if (!targetFileForReassign) return;
-    const file = targetFileForReassign;
-    const oldCatId = file.category_id;
+  async function assignCategoryToTarget(category: Category) {
+    if (targetFilesForReassign.length === 0) return;
+    const files = [...targetFilesForReassign];
+    const targetFileIds = new Set(files.map((f) => f.file_id));
 
     try {
-      await recordUserCorrection(file.file_id, oldCatId, category.id);
+      for (const file of files) {
+        await recordUserCorrection(file.file_id, file.category_id, category.id);
+      }
+
       classifiedFiles.update((list) =>
         list.map((item) =>
-          item.file_id === file.file_id
+          targetFileIds.has(item.file_id)
             ? {
                 ...item,
                 suggested_category: category.name,
@@ -390,23 +643,33 @@
             : item
         )
       );
-      showCategoryPickerModal = false;
-      targetFileForReassign = null;
-      showToast(`Arquivo '${file.filename}' reatribuído para '${category.name}'!`, "success");
+
+      showTagModal = false;
+      showCategoryModal = false;
+      const count = files.length;
+      if (count === 1) {
+        showToast(`Arquivo '${files[0].filename}' reatribuído para '${category.name}'!`, "success");
+      } else {
+        showToast(`${count} arquivos reatribuídos para '${category.name}'!`, "success");
+      }
+      targetFilesForReassign = [];
+      targetReassignLabel = "";
       await reloadCategories();
+      if ($alsoRenameInOrganization) {
+        await loadProposedNames();
+      }
     } catch (err: any) {
-      showToast("Erro ao reatribuir categoria: " + err, "error");
+      showToast("Erro ao reatribuir: " + err, "error");
     }
   }
 
-  async function handleCreateNewTag() {
-    if (!newTagNameInput.trim() || !targetFileForReassign) return;
+  async function handleCreateAndAssignNew(isCategory: boolean = false) {
+    if (!modalNewNameInput.trim() || targetFilesForReassign.length === 0) return;
     try {
-      const newCat = await createCategory(newTagNameInput.trim());
-      showNewTagModal = false;
-      await assignCategoryToFile(newCat);
+      const newCat = await createCategory(modalNewNameInput.trim(), modalNewColorInput);
+      await assignCategoryToTarget(newCat);
     } catch (err: any) {
-      showToast("Erro ao criar nova tag: " + err, "error");
+      showToast(`Erro ao criar ${isCategory ? "categoria" : "tag"}: ` + err, "error");
     }
   }
 
@@ -422,7 +685,8 @@
       for (const file of filteredFiles) {
         const sanitizedCat = file.suggested_category.replace(/[<>:"/\\|?*]/g, "_").trim();
         const sep = root.includes("\\") ? "\\" : "/";
-        const destPath = `${root}${sep}${sanitizedCat}${sep}${file.filename}`;
+        const finalFilename = getProposedFilename(file);
+        const destPath = `${root}${sep}${sanitizedCat}${sep}${finalFilename}`;
 
         moves.push({
           file_id: file.file_id,
@@ -454,10 +718,10 @@
       if (count > 0) {
         showToast($_("preview.toast.undone", { values: { count } }), "success");
       } else {
-        showToast("Nenhuma alteração recente encontrada para desfazer.", "info");
+        showToast("Nenhuma operação anterior para desfazer.", "info");
       }
     } catch (err: any) {
-      showToast("Erro ao desfazer organização: " + err, "error");
+      showToast("Erro ao desfazer: " + err, "error");
     } finally {
       isUndoing = false;
     }
@@ -467,63 +731,64 @@
 <svelte:window on:click={closeContextMenu} />
 
 <div class="preview-layout">
-  <!-- Top Action & Search Bar -->
-  <div class="preview-header">
-    <div class="header-titles">
-      <h1>{$_("preview.title")}</h1>
-      <p class="subtitle">Árvores de pastas antes e depois. Clique com o botão direito em qualquer arquivo para ver ou alterar sua tag.</p>
+  <!-- Top Action Bar -->
+  <div class="preview-action-bar">
+    <div class="search-box">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input
+        type="text"
+        placeholder={$_("preview.search_placeholder")}
+        bind:value={searchQuery}
+      />
+      {#if searchQuery}
+        <button class="clear-search" on:click={() => (searchQuery = "")}>✕</button>
+      {/if}
     </div>
 
-    <div class="header-controls">
-      <!-- Search Input -->
-      <div class="search-box">
+    <!-- Toggle de Renomear junto na Organização -->
+    <label class="preview-rename-toggle" title="Se ativado, sugere novos nomes inteligentes para os arquivos na árvore de destino">
+      <input type="checkbox" bind:checked={$alsoRenameInOrganization} />
+      <span>Sugerir novos nomes na organização</span>
+    </label>
+
+    <div class="action-buttons">
+      <button
+        class="secondary-btn"
+        disabled={isUndoing || isApplying}
+        on:click={handleUndo}
+      >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          <path d="M3 7v6h6"></path>
+          <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
         </svg>
-        <input
-          type="text"
-          placeholder={$_("preview.search_placeholder")}
-          bind:value={searchQuery}
-        />
-        {#if searchQuery}
-          <button class="clear-search" on:click={() => (searchQuery = "")}>✕</button>
-        {/if}
-      </div>
+        {isUndoing ? $_("preview.undoing") : $_("preview.undo")}
+      </button>
 
-      <!-- Action Buttons -->
-      <div class="button-group">
-        <button
-          class="secondary-btn"
-          disabled={isUndoing || isApplying}
-          on:click={handleUndo}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 7v6h6"></path>
-            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
-          </svg>
-          {isUndoing ? $_("preview.undoing") : $_("preview.undo")}
-        </button>
-
-        <button
-          class="primary-btn"
-          disabled={filteredFiles.length === 0 || isApplying || isUndoing}
-          on:click={() => (showConfirmModal = true)}
-        >
+      <button
+        class="primary-btn"
+        disabled={isApplying || filteredFiles.length === 0}
+        on:click={() => (showConfirmModal = true)}
+      >
+        {#if isApplying}
+          <div class="mini-spinner"></div>
+          {$_("preview.applying")}
+        {:else}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
-          {isApplying ? $_("preview.applying") : $_("preview.apply")}
-          <span class="btn-count">({filteredFiles.length})</span>
-        </button>
-      </div>
+          {$_("preview.apply")} ({filteredFiles.length})
+        {/if}
+      </button>
     </div>
   </div>
 
-  <!-- Dual-Column Tree Structure: Antes e Depois -->
-  <div class="columns-container">
+  <!-- Side-by-Side Dual Tree View -->
+  <div class="trees-container">
     <!-- Left Column: Tree Antes (Estrutura Atual) -->
-    <section class="preview-column glass-panel">
+    <section class="preview-column glass-panel current-column">
       <div class="column-header">
         <div class="column-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -569,7 +834,7 @@
       </div>
     </section>
 
-    <!-- Right Column: Tree Depois (Estrutura Proposta) -->
+    <!-- Right Column: Tree Depois (Estrutura Proposta com nomes sugeridos) -->
     <section class="preview-column glass-panel proposed-column">
       <div class="column-header">
         <div class="column-title">
@@ -607,6 +872,7 @@
               <FileTreeNode
                 {node}
                 expandedIds={expandedAfterIds}
+                highlightedNodeId={highlightedAfterNodeId}
                 onToggleFolder={toggleAfterFolder}
                 onFileContextMenu={openFileContextMenu}
                 onFolderContextMenu={openFolderContextMenu}
@@ -619,7 +885,7 @@
   </div>
 </div>
 
-<!-- Context Menu on Right Click (Inspeção de Tags, Detalhes e Ações) -->
+<!-- Context Menu on Right Click (Com opção Renomear e Mostrar no Preview) -->
 {#if contextMenu.visible}
   <div
     class="custom-context-menu"
@@ -633,7 +899,7 @@
       <!-- Header do Arquivo com Tag em Destaque -->
       <div class="context-card-header">
         <div class="context-file-title truncate" title={contextMenu.file.filename}>
-          📄 {contextMenu.file.filename}
+          {contextMenu.file.filename}
         </div>
         <div class="context-file-path truncate" title={contextMenu.file.path}>
           {contextMenu.file.path}
@@ -656,30 +922,86 @@
 
       <div class="context-divider"></div>
 
-      <!-- Ações do Arquivo -->
+      <!-- 1. Mostrar no Preview Organizado -->
+      <button
+        class="context-item highlight-action"
+        role="menuitem"
+        on:click={() => handleShowInOrganizedPreview(contextMenu.file!)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="13 17 18 12 13 7"></polyline>
+          <polyline points="6 17 11 12 6 7"></polyline>
+        </svg>
+        Mostrar no preview organizado
+      </button>
+
+      <!-- 2. Visualizar -->
+      <button
+        class="context-item"
+        role="menuitem"
+        on:click={() => handleOpenFilePreview(contextMenu.file!.path)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        {$_("preview.context.preview")}
+      </button>
+
+      <!-- 3. Renomear Arquivo -->
+      <button
+        class="context-item"
+        role="menuitem"
+        on:click={() => handleOpenRenameModal(contextMenu.file!)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+        Renomear
+      </button>
+
+      <!-- 4. Abrir no Explorador -->
+      <button
+        class="context-item"
+        role="menuitem"
+        on:click={() => handleOpenInExplorer(contextMenu.file!.path)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        {$_("preview.context.open_explorer")}
+      </button>
+
+      <div class="context-divider"></div>
+
+      <!-- 5. Trocar / Criar Tag -->
+      <button
+        class="context-item"
+        role="menuitem"
+        on:click={() => handleOpenChangeTag(contextMenu.file!)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+          <line x1="7" y1="7" x2="7.01" y2="7"></line>
+        </svg>
+        {$_("preview.context.change_tag")}
+      </button>
+
+      <!-- 6. Trocar / Criar Categoria -->
       <button
         class="context-item"
         role="menuitem"
         on:click={() => handleOpenChangeCategory(contextMenu.file!)}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          <polyline points="2 10 22 10"></polyline>
         </svg>
         {$_("preview.context.change_category")}
       </button>
 
-      <button
-        class="context-item"
-        role="menuitem"
-        on:click={() => handleOpenNewTag(contextMenu.file!)}
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-        {$_("preview.context.new_tag")}
-      </button>
-
+      <!-- 7. Regra Permanente -->
       <button
         class="context-item"
         role="menuitem"
@@ -693,6 +1015,7 @@
 
       <div class="context-divider"></div>
 
+      <!-- 8. Ignorar arquivo -->
       <button
         class="context-item text-danger"
         role="menuitem"
@@ -709,15 +1032,80 @@
       <!-- Header da Pasta -->
       <div class="context-card-header">
         <div class="context-file-title truncate" title={contextMenu.folder.name}>
-          📁 {contextMenu.folder.name}
+          {contextMenu.folder.name}
         </div>
         <div class="context-file-path truncate">
           {contextMenu.folder.fileCount} {contextMenu.folder.fileCount === 1 ? 'arquivo' : 'arquivos'} nesta pasta
         </div>
+        {#if contextMenu.folder.categoryName}
+          <div
+            class="context-tag-pill"
+            style="background: {contextMenu.folder.categoryColor || '#3b82f6'}18; border-color: {contextMenu.folder.categoryColor || '#3b82f6'}40;"
+          >
+            <span class="cat-dot" style="background: {contextMenu.folder.categoryColor || '#3b82f6'};"></span>
+            <span class="context-tag-name truncate" style="color: {contextMenu.folder.categoryColor || '#3b82f6'};">
+              {contextMenu.folder.categoryName}
+            </span>
+          </div>
+        {/if}
       </div>
 
       <div class="context-divider"></div>
 
+      <!-- 1. Mostrar no Preview Organizado -->
+      <button
+        class="context-item highlight-action"
+        role="menuitem"
+        on:click={() => handleShowFolderInOrganizedPreview(contextMenu.folder!)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="13 17 18 12 13 7"></polyline>
+          <polyline points="6 17 11 12 6 7"></polyline>
+        </svg>
+        Mostrar no preview organizado
+      </button>
+
+      <!-- 2. Abrir no Explorador -->
+      <button
+        class="context-item"
+        role="menuitem"
+        on:click={() => handleOpenInExplorer(contextMenu.folder!.fullPath)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        {$_("preview.context.open_explorer")}
+      </button>
+
+      <div class="context-divider"></div>
+
+      <!-- 2. Trocar / Criar Tag da Pasta -->
+      <button
+        class="context-item"
+        role="menuitem"
+        on:click={() => handleOpenChangeFolderTag(contextMenu.folder!)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+          <line x1="7" y1="7" x2="7.01" y2="7"></line>
+        </svg>
+        {$_("preview.context.change_folder_tag")}
+      </button>
+
+      <!-- 3. Trocar / Criar Categoria da Pasta -->
+      <button
+        class="context-item"
+        role="menuitem"
+        on:click={() => handleOpenChangeFolderCategory(contextMenu.folder!)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          <polyline points="2 10 22 10"></polyline>
+        </svg>
+        {$_("preview.context.change_folder_category")}
+      </button>
+
+      <!-- 4. Alternar expansão -->
       <button
         class="context-item"
         role="menuitem"
@@ -735,9 +1123,58 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="9 18 15 12 9 6"></polyline>
         </svg>
-        Alternar Expansão da Pasta
+        {$_("preview.context.toggle_expand")}
+      </button>
+
+      <div class="context-divider"></div>
+
+      <!-- 5. Ignorar pasta -->
+      <button
+        class="context-item text-danger"
+        role="menuitem"
+        on:click={() => handleIgnoreFolder(contextMenu.folder!)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+        </svg>
+        {$_("preview.context.ignore_folder")}
       </button>
     {/if}
+  </div>
+{/if}
+
+<!-- Modal: Renomear Arquivo no Preview -->
+{#if showRenameModal && renamingTargetFile}
+  <div
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    on:click|self={() => (showRenameModal = false)}
+    on:keydown={(e) => e.key === "Escape" && (showRenameModal = false)}
+  >
+    <div class="modal-card">
+      <h2>Renomear Arquivo</h2>
+      <p class="modal-subtitle">Nome original: <strong>{renamingTargetFile.filename}</strong></p>
+
+      <input
+        type="text"
+        bind:value={renameModalInput}
+        class="text-input"
+        placeholder="Digite o novo nome para o arquivo..."
+        on:keydown={(e) => e.key === "Enter" && handleSaveRenameModal()}
+      />
+
+      <div class="modal-actions">
+        <button class="secondary-btn" on:click={() => (showRenameModal = false)}>
+          Cancelar
+        </button>
+        <button class="primary-btn" on:click={handleSaveRenameModal}>
+          Salvar Nome
+        </button>
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -767,55 +1204,135 @@
   </div>
 {/if}
 
-<!-- Modal: Selecionar Categoria Existente -->
-{#if showCategoryPickerModal}
+<!-- Modal Amplo: Trocar / Criar Tag -->
+{#if showTagModal}
   <div
     class="modal-backdrop"
     role="dialog"
     aria-modal="true"
     tabindex="-1"
-    on:click|self={() => (showCategoryPickerModal = false)}
-    on:keydown={(e) => e.key === "Escape" && (showCategoryPickerModal = false)}
+    on:click|self={() => (showTagModal = false)}
+    on:keydown={(e) => e.key === "Escape" && (showTagModal = false)}
   >
-    <div class="modal-card modal-card-wide">
-      <h2>{$_("preview.context.change_category")}</h2>
-      <p class="modal-subtitle">Escolha uma categoria para <strong>{targetFileForReassign?.filename}</strong>:</p>
-
-      <!-- Category Filter Search Box -->
-      <div class="search-box modal-search">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-        <input
-          type="text"
-          placeholder={$_("preview.search_categories")}
-          bind:value={categoryPickerSearch}
-        />
-        {#if categoryPickerSearch}
-          <button class="clear-search" on:click={() => (categoryPickerSearch = "")}>✕</button>
-        {/if}
+    <div class="modal-card modal-card-large">
+      <div class="modal-header-row">
+        <div>
+          <h2>{$_("preview.modal.tag_title")}</h2>
+          <p class="modal-subtitle">Selecione ou crie uma tag para <strong>{targetReassignLabel}</strong>:</p>
+        </div>
+        <button class="close-btn" on:click={() => (showTagModal = false)}>✕</button>
       </div>
 
-      <div class="category-grid-picker">
-        {#if filteredPickerCategories.length === 0}
-          <div class="empty-picker">Nenhuma categoria encontrada.</div>
+      <!-- Barra de Criação Rápida de Nova Tag -->
+      <div class="create-quick-box glass-panel">
+        <div class="create-input-group">
+          <input
+            type="text"
+            placeholder="Nome da nova tag..."
+            bind:value={modalNewNameInput}
+            class="text-input no-margin"
+            on:keydown={(e) => e.key === "Enter" && handleCreateAndAssignNew(false)}
+          />
+          <div class="palette-mini-dots">
+            {#each presetColors as col}
+              <button
+                class="palette-dot"
+                class:selected={modalNewColorInput === col}
+                style="background: {col}"
+                title="Cor"
+                on:click={() => (modalNewColorInput = col)}
+              ></button>
+            {/each}
+          </div>
+        </div>
+        <button
+          class="primary-btn"
+          disabled={!modalNewNameInput.trim()}
+          on:click={() => handleCreateAndAssignNew(false)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Criar & Atribuir
+        </button>
+      </div>
+
+      <!-- Abas e Busca de Tags Existentes -->
+      <div class="modal-toolbar">
+        <div class="modal-tabs">
+          <button
+            class="modal-tab"
+            class:active={modalActiveTab === "all"}
+            on:click={() => (modalActiveTab = "all")}
+          >
+            {$_("tags.tab.all")}
+            <span class="tab-badge">{allCategories.length}</span>
+          </button>
+          <button
+            class="modal-tab"
+            class:active={modalActiveTab === "manual"}
+            on:click={() => (modalActiveTab = "manual")}
+          >
+            {$_("tags.tab.manual")}
+            <span class="tab-badge">{allCategories.filter(c => c.created_by === "user").length}</span>
+          </button>
+          <button
+            class="modal-tab"
+            class:active={modalActiveTab === "auto"}
+            on:click={() => (modalActiveTab = "auto")}
+          >
+            {$_("tags.tab.auto")}
+            <span class="tab-badge">{allCategories.filter(c => c.created_by === "auto").length}</span>
+          </button>
+        </div>
+
+        <div class="search-box modal-search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="text"
+            placeholder={$_("preview.search_categories")}
+            bind:value={modalSearchQuery}
+          />
+          {#if modalSearchQuery}
+            <button class="clear-search" on:click={() => (modalSearchQuery = "")}>✕</button>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Grid de Tags Existentes -->
+      <div class="large-tags-grid">
+        {#if modalFilteredCategories.length === 0}
+          <div class="empty-picker">Nenhuma tag encontrada com os filtros atuais.</div>
         {:else}
-          {#each filteredPickerCategories as cat (cat.id)}
+          {#each modalFilteredCategories as tag (tag.id)}
             <button
-              class="cat-pick-btn"
-              title={cat.name}
-              on:click={() => assignCategoryToFile(cat)}
+              class="large-tag-btn glass-panel"
+              style="border-left: 4px solid {tag.color ?? '#3b82f6'}"
+              title="Atribuir tag '{tag.name}'"
+              on:click={() => assignCategoryToTarget(tag)}
             >
-              <span class="cat-dot" style="background: {cat.color ?? '#3b82f6'}"></span>
-              <span class="cat-pick-name">{cat.name}</span>
+              <div class="tag-card-content">
+                <span class="large-tag-name">{tag.name}</span>
+                <div class="large-tag-meta">
+                  <span class="mini-origin-badge {tag.created_by}">
+                    {tag.created_by === "auto" ? $_("tags.created_by_auto") : $_("tags.created_by_user")}
+                  </span>
+                  <span class="tag-file-counter">
+                    {$_("tags.files_count", { values: { count: tag.file_count } })}
+                  </span>
+                </div>
+              </div>
             </button>
           {/each}
         {/if}
       </div>
 
       <div class="modal-actions">
-        <button class="secondary-btn" on:click={() => (showCategoryPickerModal = false)}>
+        <button class="secondary-btn" on:click={() => (showTagModal = false)}>
           {$_("preview.modal.cancel")}
         </button>
       </div>
@@ -823,34 +1340,236 @@
   </div>
 {/if}
 
-<!-- Modal: Criar Nova Tag -->
-{#if showNewTagModal}
+<!-- Modal Amplo: Trocar / Criar Categoria (Espelhado) -->
+{#if showCategoryModal}
   <div
     class="modal-backdrop"
     role="dialog"
     aria-modal="true"
     tabindex="-1"
-    on:click|self={() => (showNewTagModal = false)}
-    on:keydown={(e) => e.key === "Escape" && (showNewTagModal = false)}
+    on:click|self={() => (showCategoryModal = false)}
+    on:keydown={(e) => e.key === "Escape" && (showCategoryModal = false)}
   >
-    <div class="modal-card">
-      <h2>{$_("tags.new")}</h2>
-      <p class="modal-subtitle">Digite o nome da nova categoria para <strong>{targetFileForReassign?.filename}</strong>:</p>
+    <div class="modal-card modal-card-large">
+      <div class="modal-header-row">
+        <div>
+          <h2>{$_("preview.modal.category_title")}</h2>
+          <p class="modal-subtitle">Selecione ou crie uma categoria para <strong>{targetReassignLabel}</strong>:</p>
+        </div>
+        <button class="close-btn" on:click={() => (showCategoryModal = false)}>✕</button>
+      </div>
 
-      <input
-        type="text"
-        placeholder="Ex: Documentos Financeiros 2026"
-        bind:value={newTagNameInput}
-        class="text-input"
-        on:keydown={(e) => e.key === "Enter" && handleCreateNewTag()}
-      />
+      <!-- Barra de Criação Rápida de Nova Categoria -->
+      <div class="create-quick-box glass-panel">
+        <div class="create-input-group">
+          <input
+            type="text"
+            placeholder="Nome da nova categoria..."
+            bind:value={modalNewNameInput}
+            class="text-input no-margin"
+            on:keydown={(e) => e.key === "Enter" && handleCreateAndAssignNew(true)}
+          />
+          <div class="palette-mini-dots">
+            {#each presetColors as col}
+              <button
+                class="palette-dot"
+                class:selected={modalNewColorInput === col}
+                style="background: {col}"
+                title="Cor"
+                on:click={() => (modalNewColorInput = col)}
+              ></button>
+            {/each}
+          </div>
+        </div>
+        <button
+          class="primary-btn"
+          disabled={!modalNewNameInput.trim()}
+          on:click={() => handleCreateAndAssignNew(true)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Criar & Atribuir
+        </button>
+      </div>
+
+      <!-- Abas e Busca de Categorias Existentes -->
+      <div class="modal-toolbar">
+        <div class="modal-tabs">
+          <button
+            class="modal-tab"
+            class:active={modalActiveTab === "all"}
+            on:click={() => (modalActiveTab = "all")}
+          >
+            {$_("categories.tab.all")}
+            <span class="tab-badge">{allCategories.length}</span>
+          </button>
+          <button
+            class="modal-tab"
+            class:active={modalActiveTab === "manual"}
+            on:click={() => (modalActiveTab = "manual")}
+          >
+            {$_("categories.tab.manual")}
+            <span class="tab-badge">{allCategories.filter(c => c.created_by === "user").length}</span>
+          </button>
+          <button
+            class="modal-tab"
+            class:active={modalActiveTab === "auto"}
+            on:click={() => (modalActiveTab = "auto")}
+          >
+            {$_("categories.tab.auto")}
+            <span class="tab-badge">{allCategories.filter(c => c.created_by === "auto").length}</span>
+          </button>
+        </div>
+
+        <div class="search-box modal-search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="text"
+            placeholder={$_("preview.search_categories")}
+            bind:value={modalSearchQuery}
+          />
+          {#if modalSearchQuery}
+            <button class="clear-search" on:click={() => (modalSearchQuery = "")}>✕</button>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Grid de Categorias Existentes -->
+      <div class="large-tags-grid">
+        {#if modalFilteredCategories.length === 0}
+          <div class="empty-picker">Nenhuma categoria encontrada com os filtros atuais.</div>
+        {:else}
+          {#each modalFilteredCategories as cat (cat.id)}
+            <button
+              class="large-tag-btn glass-panel"
+              style="border-left: 4px solid {cat.color ?? '#3b82f6'}"
+              title="Atribuir categoria '{cat.name}'"
+              on:click={() => assignCategoryToTarget(cat)}
+            >
+              <div class="tag-card-content">
+                <span class="large-tag-name">{cat.name}</span>
+                <div class="large-tag-meta">
+                  <span class="mini-origin-badge {cat.created_by}">
+                    {cat.created_by === "auto" ? $_("categories.created_by_auto") : $_("categories.created_by_user")}
+                  </span>
+                  <span class="tag-file-counter">
+                    {$_("categories.files_count", { values: { count: cat.file_count } })}
+                  </span>
+                </div>
+              </div>
+            </button>
+          {/each}
+        {/if}
+      </div>
 
       <div class="modal-actions">
-        <button class="secondary-btn" on:click={() => (showNewTagModal = false)}>
+        <button class="secondary-btn" on:click={() => (showCategoryModal = false)}>
           {$_("preview.modal.cancel")}
         </button>
-        <button class="primary-btn" on:click={handleCreateNewTag}>
-          {$_("tags.create")}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Modal Amplo: Visualização de Conteúdo do Arquivo -->
+{#if showFilePreviewModal}
+  <div
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    on:click|self={() => (showFilePreviewModal = false)}
+    on:keydown={(e) => e.key === "Escape" && (showFilePreviewModal = false)}
+  >
+    <div class="modal-card modal-card-large preview-viewer-modal">
+      <div class="modal-header-row">
+        <div class="preview-title-info">
+          <h2>📄 {filePreviewData?.filename ?? "Carregando visualização..."}</h2>
+          {#if filePreviewData}
+            <p class="modal-subtitle file-path-sub truncate" title={filePreviewData.path}>
+              {filePreviewData.path} • <code>{filePreviewData.mime_type}</code>
+            </p>
+          {/if}
+        </div>
+        <div class="preview-header-actions">
+          {#if filePreviewData}
+            <button
+              class="secondary-btn mini-action"
+              title="Abrir pasta no Windows Explorer"
+              on:click={() => handleOpenInExplorer(filePreviewData!.path)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              Explorador
+            </button>
+          {/if}
+          <button class="close-btn" on:click={() => (showFilePreviewModal = false)}>✕</button>
+        </div>
+      </div>
+
+      <div class="preview-viewer-body">
+        {#if previewLoading}
+          <div class="viewer-loader">
+            <div class="mini-spinner large"></div>
+            <span>Lendo e renderizando conteúdo do arquivo...</span>
+          </div>
+        {:else if filePreviewData?.error}
+          <div class="viewer-error">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <p>{filePreviewData.error}</p>
+          </div>
+        {:else if filePreviewData}
+          {#if filePreviewData.file_type === "image" && filePreviewData.data_url}
+            <div class="image-viewer-container">
+              <img src={filePreviewData.data_url} alt={filePreviewData.filename} class="preview-rendered-img" />
+            </div>
+          {:else if filePreviewData.file_type === "audio" && filePreviewData.data_url}
+            <div class="media-viewer-container">
+              <div class="media-icon-badge">🎵</div>
+              <audio controls src={filePreviewData.data_url} class="audio-element"></audio>
+            </div>
+          {:else if filePreviewData.file_type === "video" && filePreviewData.data_url}
+            <div class="media-viewer-container">
+              <video controls src={filePreviewData.data_url} class="video-element">
+                <track kind="captions" />
+              </video>
+            </div>
+          {:else if filePreviewData.text_content}
+            <div class="text-viewer-container">
+              <pre class="code-content"><code>{filePreviewData.text_content}</code></pre>
+            </div>
+          {:else}
+            <div class="binary-viewer-container">
+              <div class="binary-icon">📦</div>
+              <h3>Formato binário / Arquivo grande</h3>
+              <p>Este arquivo não possui visualizador de texto direto. Você pode abri-lo no seu aplicativo padrão do Windows pelo Explorador de Arquivos.</p>
+              <button
+                class="primary-btn"
+                on:click={() => handleOpenInExplorer(filePreviewData!.path)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                Abrir no Windows Explorer
+              </button>
+            </div>
+          {/if}
+        {/if}
+      </div>
+
+      <div class="modal-actions">
+        <button class="secondary-btn" on:click={() => (showFilePreviewModal = false)}>
+          Fechar
         </button>
       </div>
     </div>
@@ -870,130 +1589,133 @@
     animation: fadeIn 250ms ease-out;
   }
 
-  .preview-header {
+  .preview-action-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 1.25rem;
     flex-wrap: wrap;
-    gap: 1rem;
-    flex-shrink: 0;
-  }
-
-  .header-titles h1 {
-    font-size: 1.4rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    color: var(--text-primary);
-  }
-
-  .subtitle {
-    font-size: 0.84rem;
-    color: var(--text-muted);
-  }
-
-  .header-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
     flex-shrink: 0;
   }
 
   .search-box {
-    position: relative;
     display: flex;
     align-items: center;
-  }
-
-  .search-box svg {
-    position: absolute;
-    left: 0.85rem;
-    color: var(--text-muted);
-    pointer-events: none;
+    gap: 0.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.85rem;
+    min-width: 260px;
   }
 
   .search-box input {
-    padding-left: 2.3rem;
-    padding-right: 2rem;
-    width: 260px;
-    font-size: 0.88rem;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    width: 100%;
   }
 
   .clear-search {
-    position: absolute;
-    right: 0.6rem;
     background: transparent;
+    border: none;
     color: var(--text-muted);
-    font-size: 0.8rem;
-    padding: 0.2rem;
+    cursor: pointer;
+    font-size: 0.85rem;
   }
 
-  .button-group {
+  .preview-rename-toggle {
     display: flex;
+    align-items: center;
     gap: 0.5rem;
-    flex-shrink: 0;
+    font-size: 0.84rem;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    padding: 0.45rem 0.85rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .preview-rename-toggle input {
+    cursor: pointer;
+    accent-color: var(--accent-primary);
+  }
+
+  .action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
   }
 
   .primary-btn {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.65rem 1.25rem;
-    font-size: 0.88rem;
-    font-weight: 600;
-    border-radius: var(--radius-md);
     background: var(--accent-primary);
     color: white;
-    box-shadow: 0 4px 12px var(--accent-glow);
-    flex-shrink: 0;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 0.55rem 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.88rem;
+    transition: all 150ms ease;
   }
 
   .primary-btn:hover:not(:disabled) {
-    background: var(--accent-primary-hover);
+    filter: brightness(1.1);
+  }
+
+  .primary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .secondary-btn {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.65rem 1.1rem;
-    font-size: 0.88rem;
-    font-weight: 600;
-    border-radius: var(--radius-md);
     background: var(--bg-tertiary);
-    border: 1px solid var(--border-medium);
     color: var(--text-primary);
-    flex-shrink: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 0.55rem 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.88rem;
+    transition: all 150ms ease;
   }
 
   .secondary-btn:hover:not(:disabled) {
     background: var(--bg-hover);
   }
 
-  .btn-count {
-    opacity: 0.85;
-    font-size: 0.8rem;
+  .secondary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
-  /* Dual Column Tree Container */
-  .columns-container {
+  .trees-container {
     flex: 1;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1.25rem;
-    overflow: hidden;
     min-height: 0;
-    min-width: 0;
+    overflow: hidden;
   }
 
   .preview-column {
     display: flex;
     flex-direction: column;
     border-radius: var(--radius-lg);
-    overflow: hidden;
-    background: var(--bg-card);
+    background: var(--bg-secondary);
     border: 1px solid var(--border-subtle);
+    overflow: hidden;
     min-height: 0;
-    min-width: 0;
   }
 
   .column-header {
@@ -1004,7 +1726,6 @@
     border-bottom: 1px solid var(--border-subtle);
     background: var(--bg-tertiary);
     flex-shrink: 0;
-    gap: 0.5rem;
   }
 
   .column-title {
@@ -1012,63 +1733,56 @@
     align-items: center;
     gap: 0.5rem;
     color: var(--text-primary);
-    min-width: 0;
   }
 
   .column-title h2 {
     font-size: 0.95rem;
     font-weight: 700;
-    white-space: nowrap;
+    margin: 0;
   }
 
   .column-meta-actions {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    flex-shrink: 0;
   }
 
   .column-meta {
-    font-size: 0.76rem;
-    font-weight: 600;
+    font-size: 0.75rem;
     color: var(--text-muted);
-    white-space: nowrap;
+    font-weight: 500;
   }
 
   .tree-controls {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.25rem;
   }
 
   .mini-btn {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
-    font-size: 0.72rem;
-    font-weight: 600;
+    width: 22px;
+    height: 22px;
     border-radius: var(--radius-sm);
     background: var(--bg-secondary);
     border: 1px solid var(--border-subtle);
-    color: var(--text-secondary);
-    transition: all var(--transition-fast);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 120ms ease;
   }
 
   .mini-btn:hover {
-    background: var(--bg-hover);
     color: var(--text-primary);
-    border-color: var(--border-medium);
+    background: var(--bg-hover);
   }
 
   .tree-scroll-container {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 0.75rem;
-    display: flex;
-    flex-direction: column;
+    padding: 0.5rem;
     min-height: 0;
   }
 
@@ -1076,7 +1790,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
-    width: 100%;
   }
 
   .empty-state {
@@ -1095,7 +1808,7 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl);
     padding: 0.5rem;
-    width: 270px;
+    width: 280px;
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
@@ -1149,8 +1862,8 @@
   }
 
   .cat-dot {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
   }
@@ -1164,16 +1877,27 @@
     font-weight: 500;
     color: var(--text-primary);
     background: transparent;
+    border: none;
     border-radius: var(--radius-sm);
     text-align: left;
     width: 100%;
     flex-shrink: 0;
+    cursor: pointer;
     transition: all var(--transition-fast);
   }
 
   .context-item:hover {
     background: var(--bg-hover);
     color: var(--accent-primary);
+  }
+
+  .context-item.highlight-action {
+    color: var(--accent-primary);
+    font-weight: 600;
+  }
+
+  .context-item.highlight-action:hover {
+    background: var(--accent-light);
   }
 
   .context-item.text-danger:hover {
@@ -1187,11 +1911,11 @@
     margin: 0.2rem 0;
   }
 
-  /* Modals */
+  /* Modals Gerais */
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.65);
+    background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(6px);
     z-index: 3000;
     display: flex;
@@ -1206,91 +1930,386 @@
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl);
-    padding: 2rem;
+    padding: 1.75rem;
     max-width: 480px;
     width: 100%;
     animation: fadeIn 200ms ease-out;
     display: flex;
     flex-direction: column;
+    gap: 1rem;
   }
 
-  .modal-card-wide {
-    max-width: 580px;
+  .modal-card-large {
+    max-width: 860px;
+    max-height: 85vh;
+    overflow: hidden;
   }
 
-  .modal-card h2 {
+  .modal-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .modal-header-row h2 {
     font-size: 1.25rem;
     font-weight: 700;
-    margin-bottom: 0.4rem;
+    margin: 0 0 0.25rem 0;
+    color: var(--text-primary);
   }
 
   .modal-subtitle {
-    font-size: 0.86rem;
+    font-size: 0.85rem;
     color: var(--text-muted);
-    margin-bottom: 1.2rem;
+    margin: 0;
     line-height: 1.4;
   }
 
-  .modal-search {
-    width: 100%;
-    margin-bottom: 0.85rem;
+  .close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    border-radius: var(--radius-sm);
   }
 
-  .modal-search input {
-    width: 100%;
+  .close-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+  }
+
+  /* Barra de criação rápida */
+  .create-quick-box {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-md);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
+  }
+
+  .create-input-group {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 260px;
   }
 
   .text-input {
     width: 100%;
-    margin-bottom: 1.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 0.55rem 0.85rem;
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    outline: none;
   }
 
-  .category-grid-picker {
+  .text-input.no-margin {
+    margin-bottom: 0;
+  }
+
+  .palette-mini-dots {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .palette-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: var(--radius-full);
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 120ms ease;
+  }
+
+  .palette-dot.selected {
+    border-color: white;
+    transform: scale(1.25);
+  }
+
+  /* Toolbar de abas e busca dentro dos modais */
+  .modal-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .modal-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .modal-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--radius-md);
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 120ms ease;
+  }
+
+  .modal-tab:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+  }
+
+  .modal-tab.active {
+    background: var(--accent-primary);
+    color: white;
+    font-weight: 600;
+  }
+
+  .tab-badge {
+    background: rgba(0, 0, 0, 0.2);
+    font-size: 0.7rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: var(--radius-full);
+  }
+
+  .modal-search {
+    min-width: 220px;
+    padding: 0.4rem 0.75rem;
+  }
+
+  /* Grid amplo de tags e categorias */
+  .large-tags-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 0.5rem;
-    max-height: 300px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.75rem;
+    max-height: 380px;
     overflow-y: auto;
-    margin-bottom: 1.5rem;
     padding: 0.25rem;
-    min-height: 80px;
+    min-height: 120px;
+  }
+
+  .large-tag-btn {
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem 0.9rem;
+    border-radius: var(--radius-md);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .large-tag-btn:hover {
+    background: var(--bg-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .tag-card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .large-tag-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .large-tag-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.74rem;
+  }
+
+  .mini-origin-badge {
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+  }
+
+  .mini-origin-badge.auto {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
+  }
+
+  .mini-origin-badge.user {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+  }
+
+  .tag-file-counter {
+    color: var(--text-muted);
   }
 
   .empty-picker {
     grid-column: 1 / -1;
-    padding: 2rem 1rem;
+    padding: 3rem 1rem;
     text-align: center;
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.9rem;
   }
 
-  .cat-pick-btn {
+  /* File Viewer Modal */
+  .preview-viewer-modal {
+    max-width: 940px;
+    height: 82vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .preview-title-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .file-path-sub {
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    margin-top: 0.2rem;
+  }
+
+  .preview-header-actions {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.6rem 0.8rem;
-    border-radius: var(--radius-md);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    text-align: left;
-    min-width: 0;
   }
 
-  .cat-pick-btn:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent-primary);
+  .mini-action {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
   }
 
-  .cat-pick-name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: block;
+  .preview-viewer-body {
     flex: 1;
-    min-width: 0;
+    overflow-y: auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 250px;
+    padding: 1rem;
+  }
+
+  .viewer-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .image-viewer-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+  }
+
+  .preview-rendered-img {
+    max-width: 100%;
+    max-height: 520px;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+
+  .media-viewer-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 2rem;
+  }
+
+  .media-icon-badge {
+    font-size: 3rem;
+  }
+
+  .audio-element {
+    width: 380px;
+  }
+
+  .video-element {
+    max-height: 480px;
+    max-width: 100%;
+    border-radius: var(--radius-md);
+  }
+
+  .text-viewer-container {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+  }
+
+  .code-content {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .binary-viewer-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.85rem;
+    max-width: 440px;
+    padding: 2rem;
+  }
+
+  .binary-icon {
+    font-size: 3.5rem;
+  }
+
+  .binary-viewer-container h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+  }
+
+  .binary-viewer-container p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .viewer-error {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #ef4444;
+    font-size: 0.9rem;
   }
 
   .modal-actions {
@@ -1298,6 +2317,27 @@
     justify-content: flex-end;
     gap: 0.6rem;
     margin-top: 0.5rem;
+  }
+
+  .mini-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 800ms linear infinite;
+  }
+
+  .mini-spinner.large {
+    width: 28px;
+    height: 28px;
+    border-width: 3px;
+    border-top-color: var(--accent-primary);
+    border-color: rgba(59, 130, 246, 0.2);
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   @keyframes fadeIn {

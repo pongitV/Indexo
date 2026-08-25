@@ -200,7 +200,7 @@
       </div>
     </section>
 
-    <!-- Safety & Offline Guarantee Section -->
+    <!-- Safety & System Protections Section -->
     <section class="settings-card glass-panel safety-card">
       <div class="card-header">
         <div class="card-icon emerald">

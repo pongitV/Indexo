@@ -162,3 +162,75 @@ fn detect_magic_extension(path: &Path) -> Option<String> {
     }
     infer::get(&buffer[..bytes_read]).map(|t| t.extension().to_string())
 }
+
+/// Varre uma lista de arquivos específicos selecionados pelo usuário
+#[tauri::command]
+pub async fn scan_specific_files(
+    file_paths: Vec<String>,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<ScanSummary, String> {
+    let mut collected_files: Vec<FileMeta> = Vec::new();
+    let mut total_size_bytes: u64 = 0;
+
+    for path_str in &file_paths {
+        let p = Path::new(path_str);
+        if !p.exists() || p.is_dir() || crate::engine::heuristics::is_excluded_path(p) {
+            continue;
+        }
+
+        let filename = p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+        let extension_declared = p.extension().map(|e| e.to_string_lossy().to_string().to_lowercase());
+        let extension_detected = detect_magic_extension(p);
+
+        let metadata = std::fs::metadata(p).ok();
+        let size_bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+        total_size_bytes += size_bytes;
+
+        let created_at = metadata
+            .as_ref()
+            .and_then(|m| m.created().ok())
+            .map(|t| {
+                let dt: DateTime<Utc> = t.into();
+                dt.to_rfc3339()
+            })
+            .unwrap_or_default();
+
+        let modified_at = metadata
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .map(|t| {
+                let dt: DateTime<Utc> = t.into();
+                dt.to_rfc3339()
+            })
+            .unwrap_or_default();
+
+        collected_files.push(FileMeta {
+            path: path_str.clone(),
+            filename,
+            extension_declared,
+            extension_detected,
+            size_bytes,
+            created_at,
+            modified_at,
+        });
+    }
+
+    let root_path = if let Some(first) = collected_files.first() {
+        Path::new(&first.path).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
+    } else {
+        "".to_string()
+    };
+
+    let total_files = collected_files.len();
+
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let session_id = db.create_session(&root_path).map_err(|e| e.to_string())?;
+    db.insert_scanned_files(&session_id, &collected_files).map_err(|e| e.to_string())?;
+    db.finish_session(&session_id, collected_files.len(), "done").map_err(|e| e.to_string())?;
+
+    Ok(ScanSummary {
+        session_id,
+        total_files,
+        total_size_bytes,
+    })
+}
