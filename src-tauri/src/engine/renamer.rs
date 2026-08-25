@@ -329,10 +329,95 @@ pub fn extract_content_subject(text: &str) -> Option<String> {
     None
 }
 
+/// Extrai o assunto mais específico da categoria ou subcategoria
+pub fn extract_category_subject(category: &str) -> Option<String> {
+    let cat = category.trim();
+    if cat.is_empty() || cat.eq_ignore_ascii_case("Outros") || cat.eq_ignore_ascii_case("Outros Arquivos") {
+        return None;
+    }
+
+    // Se for subcategoria multinível (ex: "Fotos e Imagens/Jogos/Zelda"), pega a folha mais específica
+    let cat_norm = cat.replace('\\', "/");
+    let segments: Vec<&str> = cat_norm
+        .split('/')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if let Some(&last_seg) = segments.last() {
+        if !last_seg.eq_ignore_ascii_case("Jogos") && !last_seg.eq_ignore_ascii_case("Imagens") {
+            return Some(last_seg.to_string());
+        }
+    }
+
+    if let Some(&first_seg) = segments.first() {
+        let first_lower = first_seg.to_lowercase();
+        if first_lower.contains("boleto") || first_lower.contains("fatura") {
+            return Some("Fatura".to_string());
+        } else if first_lower.contains("comprovante") {
+            return Some("Comprovante".to_string());
+        } else if first_lower.contains("contrato") {
+            return Some("Contrato".to_string());
+        } else if first_lower.contains("recibo") {
+            return Some("Recibo".to_string());
+        } else if first_lower.contains("relat") {
+            return Some("Relatorio".to_string());
+        } else if first_lower.contains("planilha") {
+            return Some("Planilha".to_string());
+        }
+    }
+
+    segments.last().map(|s| s.to_string())
+}
+
+/// Extrai sufixo de sequência numérica do nome original (ex: "foto_01" -> "01", "img (2)" -> "02")
+pub fn extract_sequence_number(stem: &str) -> Option<String> {
+    let s = stem.trim();
+    let chars: Vec<char> = s.chars().collect();
+    let len = chars.len();
+
+    // 1. Padrão no final: (1), (2), (01)...
+    if s.ends_with(')') {
+        if let Some(open_paren) = s.rfind('(') {
+            let inner = &s[open_paren + 1..s.len() - 1].trim();
+            if let Ok(num) = inner.parse::<u32>() {
+                return Some(format!("{:02}", num));
+            }
+        }
+    }
+
+    // 2. Padrão no final com separador: _01, -02, _1, -2
+    if len >= 2 {
+        let mut num_start = len;
+        while num_start > 0 && chars[num_start - 1].is_ascii_digit() {
+            num_start -= 1;
+        }
+        if num_start < len && num_start > 0 {
+            let sep = chars[num_start - 1];
+            if sep == '_' || sep == '-' || sep == ' ' || sep == '.' {
+                let digits: String = chars[num_start..len].iter().collect();
+                if let Ok(num) = digits.parse::<u32>() {
+                    // Se o número tiver 4 dígitos e for ano (ex: 2024), não é sequência
+                    if num >= 1990 && num <= 2099 {
+                        return None;
+                    }
+                    if digits.len() >= 2 {
+                        return Some(digits);
+                    } else {
+                        return Some(format!("{:02}", num));
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Gera o novo nome proposto para um arquivo baseado nas opções e conteúdo real
 pub fn generate_proposed_name(
     filename: &str,
-    _category: &str,
+    category: &str,
     extracted_text: Option<&str>,
     file_modified_date: Option<&str>,
     config: &RenameConfig,
@@ -360,10 +445,27 @@ pub fn generate_proposed_name(
             }
         });
 
-    // 3. Extrai assunto inteligente pelo conteúdo/texto ou nome
-    let content_subject = extracted_text
-        .and_then(extract_content_subject)
-        .or_else(|| extract_content_subject(stem));
+    // 3. Extrai assunto inteligente pelo conteúdo/texto, nome do arquivo ou categoria/subcategoria
+    let cat_subject = if config.include_category {
+        extract_category_subject(category)
+    } else {
+        None
+    };
+
+    let text_subject = extracted_text.and_then(extract_content_subject);
+    let stem_subject = extract_content_subject(stem);
+
+    let content_subject = if let Some(ts) = text_subject {
+        Some(ts)
+    } else if let Some(cs) = cat_subject {
+        // Se a categoria tiver uma entidade específica (ex: "Zelda", "Enel", "Contrato"), prioriza
+        Some(cs)
+    } else {
+        stem_subject
+    };
+
+    // 4. Extrai sequencial numérico se existente
+    let seq_num = extract_sequence_number(stem);
 
     let stem_clean = sanitize_filename_part(&clean_stem);
     let sep = &config.separator;
@@ -420,6 +522,14 @@ pub fn generate_proposed_name(
                 }
             }
             _ => {}
+        }
+    }
+
+    // Se tiver sequencial e ele não estiver no clean_name, anexa ao final
+    if let Some(seq) = &seq_num {
+        let has_seq_already = parts.iter().any(|p| p.ends_with(seq));
+        if !has_seq_already {
+            parts.push(seq.clone());
         }
     }
 
@@ -573,5 +683,49 @@ mod tests {
 
         // Ordem: Assunto (Recibo) - Nome Limpo (Aluguel) - Data (2026-06)
         assert_eq!(proposed, "Recibo-Aluguel-2026-06.pdf");
+    }
+
+    #[test]
+    fn test_category_subject_and_sequence() {
+        let config = RenameConfig {
+            preset: "semantic".to_string(),
+            separator: "_".to_string(),
+            case_style: "title".to_string(),
+            date_format: "none".to_string(),
+            include_category: true,
+            remove_noise: true,
+            custom_template: None,
+            structure_order: Some(vec!["subject".to_string(), "clean_name".to_string()]),
+        };
+
+        // Arquivo de jogo com subcategoria e sequencial
+        let p1 = generate_proposed_name(
+            "IMG_zelda_totk_01.png",
+            "Fotos e Imagens/Jogos/Zelda",
+            None,
+            None,
+            &config,
+        );
+        assert_eq!(p1, "Zelda_Totk_01.png");
+
+        let p2 = generate_proposed_name(
+            "IMG_screenshot_02.png",
+            "Fotos e Imagens/Jogos/Zelda",
+            None,
+            None,
+            &config,
+        );
+        // "screenshot_" é removido por clean_filename_noise, preservando a entidade e o sequencial
+        assert_eq!(p2, "Zelda_02.png");
+
+        // Fatura com subcategoria da Enel
+        let p3 = generate_proposed_name(
+            "doc_energia_janeiro.pdf",
+            "Boletos e Faturas/Enel",
+            None,
+            None,
+            &config,
+        );
+        assert_eq!(p3, "Enel_Energia_Janeiro.pdf");
     }
 }

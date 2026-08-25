@@ -19,6 +19,10 @@ pub struct ClassifiedFile {
     pub tier_used: u8, // 1 = heuristica, 2 = embedding/cluster, 3 = LLM local
     #[serde(default)]
     pub size_bytes: u64,
+    #[serde(default)]
+    pub is_already_organized: bool,
+    #[serde(default)]
+    pub original_relative_folder: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -37,12 +41,13 @@ pub async fn classify_scanned_files(
     window: tauri::Window,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<ClassifiedFile>, String> {
-    let (files, rules, language) = {
+    let (files, rules, language, root_path) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         let files = db.get_files_by_session(&session_id).map_err(|e| e.to_string())?;
         let rules = db.get_classification_rules().map_err(|e| e.to_string())?;
         let lang = db.get_setting("language").unwrap_or(None).unwrap_or_else(|| "pt-BR".to_string());
-        (files, rules, lang)
+        let root = db.get_session_root_path(&session_id).unwrap_or(None).unwrap_or_default();
+        (files, rules, lang, root)
     };
 
     let total_files = files.len();
@@ -61,7 +66,19 @@ pub async fn classify_scanned_files(
     );
 
     // =========================================================================
-    // CAMADA 1: Heuristicas instantaneas em paralelo (Rayon)
+    // ETAPA 0: Detecção de Pastas Já Organizadas / Estruturadas
+    // =========================================================================
+    let mut already_organized_map: HashMap<usize, String> = HashMap::new();
+    for (idx, f) in files.iter().enumerate() {
+        if !root_path.is_empty() {
+            if let Some(rel_folder) = crate::engine::heuristics::detect_already_organized_folder(&f.original_path, &root_path) {
+                already_organized_map.insert(idx, rel_folder);
+            }
+        }
+    }
+
+    // =========================================================================
+    // CAMADA 1: Heurísticas instantâneas em paralelo (Rayon)
     // =========================================================================
     let file_metas: Vec<FileMeta> = files
         .iter()
@@ -88,19 +105,28 @@ pub async fn classify_scanned_files(
     let mut resolved_map: HashMap<usize, (String, f32, u8)> = HashMap::new();
     let mut ambiguous_indices: Vec<usize> = Vec::new();
 
-    for (idx, res) in heuristic_results {
+    // Prioridade 0: Pastas já organizadas são preservadas intactas
+    for (&idx, rel_folder) in &already_organized_map {
+        resolved_map.insert(idx, (rel_folder.clone(), 1.0, 1));
+    }
+
+    for (idx, res) in &heuristic_results {
+        if already_organized_map.contains_key(idx) {
+            continue;
+        }
+
         if !res.needs_deeper_analysis && res.category_guess.is_some() {
             resolved_map.insert(
-                idx,
-                (res.category_guess.unwrap(), res.confidence, 1),
+                *idx,
+                (res.category_guess.clone().unwrap(), res.confidence, 1),
             );
         } else {
-            ambiguous_indices.push(idx);
+            ambiguous_indices.push(*idx);
         }
     }
 
     // =========================================================================
-    // CAMADA 2 & 3: Conteudo, Embeddings e Naming Semantico para os ambiguos
+    // CAMADA 2 & 3: Conteúdo, Embeddings e Naming Semântico para os ambíguos
     // =========================================================================
     if !ambiguous_indices.is_empty() {
         let _ = window.emit(
@@ -158,7 +184,7 @@ pub async fn classify_scanned_files(
                 .map(|(idx, snip, _)| (idx, snip))
                 .collect();
 
-            // Camada 3: Nomeacao semantica 1x por cluster
+            // Camada 3: Nomeação semântica 1x por cluster
             for cluster in clusters {
                 let sample_snippets: Vec<String> = cluster
                     .iter()
@@ -191,7 +217,30 @@ pub async fn classify_scanned_files(
     }
 
     // =========================================================================
-    // PERSISTENCIA E CONSTRUCAO DA RESPOSTA FINAL
+    // ETAPA 4: Refinamento de Subcategorias Hierárquicas Inteligentes
+    // =========================================================================
+    // Para arquivos não pré-organizados, subdivide em subcategorias (ex: "Fotos e Imagens/Jogos/Zelda")
+    let mut unorganized_items: Vec<(String, String, String)> = Vec::new();
+    for (idx, f) in files.iter().enumerate() {
+        if !already_organized_map.contains_key(&idx) {
+            let cat_name = match resolved_map.get(&idx) {
+                Some((c, _, _)) => c.clone(),
+                None => heuristic_results[idx].1.category_guess.clone().unwrap_or_else(|| {
+                    if language.starts_with("en") {
+                        "Other Files".to_string()
+                    } else {
+                        "Outros Arquivos".to_string()
+                    }
+                }),
+            };
+            unorganized_items.push((f.id.clone(), f.filename.clone(), cat_name));
+        }
+    }
+
+    let subcategory_map = crate::engine::subcategories::refine_hierarchical_subcategories(&unorganized_items);
+
+    // =========================================================================
+    // PERSISTÊNCIA E CONSTRUÇÃO DA RESPOSTA FINAL
     // =========================================================================
     let mut final_results: Vec<ClassifiedFile> = Vec::with_capacity(total_files);
     let mut category_cache: HashMap<String, CategoryRecord> = HashMap::new();
@@ -199,17 +248,30 @@ pub async fn classify_scanned_files(
     let db = state.db.lock().map_err(|e| e.to_string())?;
 
     for (idx, f) in files.iter().enumerate() {
-        let (cat_name, confidence, tier) = resolved_map
+        let is_organized = already_organized_map.contains_key(&idx);
+        let orig_rel = already_organized_map.get(&idx).cloned();
+
+        let (mut cat_name, confidence, tier) = resolved_map
             .remove(&idx)
             .unwrap_or_else(|| {
-                // Fallback final
-                let default_name = if language.starts_with("en") {
-                    "Other Files".to_string()
+                if let Some(guess) = &heuristic_results[idx].1.category_guess {
+                    (guess.clone(), heuristic_results[idx].1.confidence.max(0.60), 1)
                 } else {
-                    "Outros Arquivos".to_string()
-                };
-                (default_name, 0.50, 1)
+                    let default_name = if language.starts_with("en") {
+                        "Other Files".to_string()
+                    } else {
+                        "Outros Arquivos".to_string()
+                    };
+                    (default_name, 0.50, 1)
+                }
             });
+
+        // Se não for pré-organizado e tiver subcategoria refinada calculada
+        if !is_organized {
+            if let Some(refined_cat) = subcategory_map.get(&f.id) {
+                cat_name = refined_cat.clone();
+            }
+        }
 
         let category = match category_cache.get(&cat_name) {
             Some(c) => c.clone(),
@@ -222,7 +284,7 @@ pub async fn classify_scanned_files(
             }
         };
 
-        // Salva associacao no SQLite
+        // Salva associação no SQLite
         let _ = db.assign_file_category(&f.id, &category.id, confidence, "heuristic");
 
         let classified = ClassifiedFile {
@@ -235,6 +297,8 @@ pub async fn classify_scanned_files(
             confidence,
             tier_used: tier,
             size_bytes: f.size_bytes.max(0) as u64,
+            is_already_organized: is_organized,
+            original_relative_folder: orig_rel,
         };
 
         final_results.push(classified.clone());
@@ -254,3 +318,4 @@ pub async fn classify_scanned_files(
 
     Ok(final_results)
 }
+

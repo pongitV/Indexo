@@ -65,6 +65,16 @@ impl Database {
         Ok(())
     }
 
+    /// Busca o caminho raiz escaneado de uma sessão
+    pub fn get_session_root_path(&self, session_id: &str) -> anyhow::Result<Option<String>> {
+        let root = self.conn.query_row(
+            "SELECT root_path FROM scan_sessions WHERE id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        ).ok();
+        Ok(root)
+    }
+
     /// Insere ou atualiza arquivos escaneados
     pub fn insert_scanned_files(&self, session_id: &str, files: &[crate::commands::scan::FileMeta]) -> anyhow::Result<Vec<String>> {
         let mut file_ids = Vec::with_capacity(files.len());
@@ -276,6 +286,42 @@ impl Database {
         tx.execute("DELETE FROM categories WHERE id = ?1", params![id])?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Limpa categorias automáticas que não possuem nenhum arquivo associado
+    pub fn clean_unused_auto_categories(&self) -> anyhow::Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        let deleted = tx.execute(
+            "DELETE FROM categories
+             WHERE created_by = 'auto'
+               AND id NOT IN (SELECT DISTINCT category_id FROM file_categories)",
+            [],
+        )?;
+        tx.commit()?;
+        Ok(deleted)
+    }
+
+    /// Expurga todas as categorias automáticas de teste, preservando categorias e regras criadas manualmente pelo usuário
+    pub fn purge_all_auto_categories(&self) -> anyhow::Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM file_categories
+             WHERE category_id IN (SELECT id FROM categories WHERE created_by = 'auto')",
+            [],
+        )?;
+        tx.execute(
+            "DELETE FROM classification_rules
+             WHERE created_from = 'learned'
+               AND category_id IN (SELECT id FROM categories WHERE created_by = 'auto')",
+            [],
+        )?;
+        let deleted = tx.execute(
+            "DELETE FROM categories WHERE created_by = 'auto'",
+            [],
+        )?;
+        tx.commit()?;
+        let _ = self.conn.execute("VACUUM", []);
+        Ok(deleted)
     }
 
     /// Associa arquivo a categoria
@@ -573,6 +619,24 @@ mod tests {
         db.set_setting("theme", "dark").unwrap();
         let theme_setting = db.get_setting("theme").unwrap();
         assert_eq!(theme_setting, Some("dark".to_string()));
+
+        // 7. Limpeza e expurgo de categorias automáticas
+        let auto_unused = db.get_or_create_category("Auto Tag Orfa", "auto", None).unwrap();
+        assert!(db.list_categories().unwrap().iter().any(|c| c.id == auto_unused.id));
+        let cleaned = db.clean_unused_auto_categories().unwrap();
+        assert!(cleaned >= 1);
+        assert!(!db.list_categories().unwrap().iter().any(|c| c.id == auto_unused.id));
+
+        // Purge total preservando usuario
+        let user_cat = db.get_or_create_category("Minha Tag Manual", "user", None).unwrap();
+        let auto_cat = db.get_or_create_category("Tag Auto Temp", "auto", None).unwrap();
+        db.assign_file_category(&file_ids[0], &auto_cat.id, 0.8, "heuristic").unwrap();
+
+        let purged = db.purge_all_auto_categories().unwrap();
+        assert!(purged >= 1);
+        let remaining_cats = db.list_categories().unwrap();
+        assert!(remaining_cats.iter().any(|c| c.id == user_cat.id));
+        assert!(!remaining_cats.iter().any(|c| c.id == auto_cat.id));
     }
 }
 

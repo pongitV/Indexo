@@ -7,6 +7,8 @@
     renameCategory,
     mergeCategories,
     deleteCategory,
+    cleanUnusedCategories,
+    purgeAutoCategories,
     type Category,
   } from "../lib/api";
   import { showToast } from "../lib/stores";
@@ -21,6 +23,7 @@
   let showRenameModal = false;
   let showMergeModal = false;
   let showDeleteModal = false;
+  let showPurgeModal = false;
 
   let activeTag: Category | null = null;
   let inputName = "";
@@ -127,6 +130,27 @@
       showToast("Erro ao excluir tag: " + err, "error");
     }
   }
+
+  async function handlePurgeAuto() {
+    try {
+      const count = await purgeAutoCategories();
+      showPurgeModal = false;
+      showToast($_("tags.toast.cleaned", { values: { count } }), "success");
+      await fetchTags();
+    } catch (err: any) {
+      showToast("Erro ao limpar tags automáticas: " + err, "error");
+    }
+  }
+
+  async function handleCleanUnused() {
+    try {
+      const count = await cleanUnusedCategories();
+      showToast($_("tags.toast.cleaned", { values: { count } }), "success");
+      await fetchTags();
+    } catch (err: any) {
+      showToast("Erro ao limpar tags não utilizadas: " + err, "error");
+    }
+  }
 </script>
 
 <div class="tags-view">
@@ -152,6 +176,16 @@
           <button class="clear-search" on:click={() => (searchQuery = "")}>✕</button>
         {/if}
       </div>
+
+      {#if tags.some(t => t.created_by === "auto")}
+        <button class="secondary-btn danger-hover" on:click={() => (showPurgeModal = true)} title={$_("tags.clean_auto")}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          {$_("tags.clean_auto")}
+        </button>
+      {/if}
 
       <button class="primary-btn" on:click={openNewModal}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -362,6 +396,30 @@
       <div class="modal-actions">
         <button class="secondary-btn" on:click={() => (showDeleteModal = false)}>Cancelar</button>
         <button class="danger-btn" on:click={handleDelete}>Excluir</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Modal: Limpar Tags Automáticas -->
+{#if showPurgeModal}
+  <div
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    on:click|self={() => (showPurgeModal = false)}
+    on:keydown={(e) => e.key === "Escape" && (showPurgeModal = false)}
+  >
+    <div class="modal-card">
+      <h2>{$_("tags.modal.purge_title")}</h2>
+      <p class="modal-subtitle">
+        {$_("tags.modal.purge_desc")}
+      </p>
+      <div class="modal-actions">
+        <button class="secondary-btn" on:click={() => (showPurgeModal = false)}>Cancelar</button>
+        <button class="secondary-btn" on:click={handleCleanUnused}>{$_("tags.clean_unused")}</button>
+        <button class="danger-btn" on:click={handlePurgeAuto}>{$_("tags.clean_auto")}</button>
       </div>
     </div>
   </div>

@@ -82,6 +82,22 @@ pub async fn delete_category(
     db.delete_category(&id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn clean_unused_categories(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<usize, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.clean_unused_auto_categories().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn purge_auto_categories(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<usize, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.purge_all_auto_categories().map_err(|e| e.to_string())
+}
+
 /// Chamado toda vez que o usuario corrige uma classificacao pelo clique
 /// direito. Grava em `user_corrections` e alimenta `engine::rules::learn_from_correction`.
 #[tauri::command]

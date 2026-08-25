@@ -12,6 +12,8 @@
     fileCount: number;
     categoryColor?: string;
     categoryName?: string;
+    isPreservedFolder?: boolean;
+    isPreservedFile?: boolean;
   }
 
   export let node: TreeNodeData;
@@ -129,6 +131,16 @@
       <!-- Folder Name -->
       <span class="row-label folder-label truncate">{node.name}</span>
 
+      <!-- Preserved Folder Badge -->
+      {#if node.isPreservedFolder}
+        <span class="row-preserved-badge" title="Pasta já organizada detectada (Estrutura original preservada para revisão)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          Preservada
+        </span>
+      {/if}
+
       <!-- File Count Badge -->
       <span class="row-badge folder-badge">{node.fileCount}</span>
     </div>
@@ -176,6 +188,16 @@
 
     <!-- File Name -->
     <span class="row-label file-label truncate">{node.name}</span>
+
+    <!-- Preserved File Badge -->
+    {#if node.file?.is_already_organized || node.isPreservedFile}
+      <span class="file-preserved-badge" title="Estrutura original preservada para revisão">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+        Preservado
+      </span>
+    {/if}
 
     <!-- Right-click prompt badge -->
     <span class="right-click-hint">opções</span>
@@ -292,6 +314,34 @@
     color: var(--text-muted);
     flex-shrink: 0;
     margin-left: auto;
+  }
+
+  .row-preserved-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.12rem 0.45rem;
+    border-radius: var(--radius-sm);
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    flex-shrink: 0;
+  }
+
+  .file-preserved-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 0.08rem 0.4rem;
+    border-radius: var(--radius-sm);
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    flex-shrink: 0;
   }
 
   .right-click-hint {

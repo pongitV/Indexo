@@ -72,9 +72,15 @@
 
   function handleShowInOrganizedPreview(file: ClassifiedFile) {
     closeContextMenu();
-    const catName = file.suggested_category || "Outros";
+    const catPath = file.suggested_category || "Outros";
+    const segments = catPath.replace(/\\/g, "/").split("/").map((s) => s.trim()).filter(Boolean);
+
     expandedAfterIds.add("after-root");
-    expandedAfterIds.add(`after-cat-${catName}`);
+    let currentRel = "";
+    for (const seg of segments) {
+      currentRel = currentRel ? `${currentRel}/${seg}` : seg;
+      expandedAfterIds.add(`after-dir-${currentRel}`);
+    }
     expandedAfterIds = new Set(expandedAfterIds);
 
     const targetId = `after-file-${file.file_id}`;
@@ -87,7 +93,7 @@
       }
     }, 60);
 
-    showToast(`Arquivo localizado na pasta '${catName}'`, "info");
+    showToast(`Arquivo localizado na pasta '${catPath}'`, "info");
 
     setTimeout(() => {
       if (highlightedAfterNodeId === targetId) {
@@ -103,13 +109,19 @@
 
     expandedAfterIds.add("after-root");
     for (const f of files) {
-      const catName = f.suggested_category || "Outros";
-      expandedAfterIds.add(`after-cat-${catName}`);
+      const catPath = f.suggested_category || "Outros";
+      const segments = catPath.replace(/\\/g, "/").split("/").map((s) => s.trim()).filter(Boolean);
+      let currentRel = "";
+      for (const seg of segments) {
+        currentRel = currentRel ? `${currentRel}/${seg}` : seg;
+        expandedAfterIds.add(`after-dir-${currentRel}`);
+      }
     }
     expandedAfterIds = new Set(expandedAfterIds);
 
     const firstCat = files[0].suggested_category || "Outros";
-    const targetId = `after-cat-${firstCat}`;
+    const firstSegments = firstCat.replace(/\\/g, "/").split("/").map((s) => s.trim()).filter(Boolean);
+    const targetId = `after-dir-${firstSegments.join("/")}`;
     highlightedAfterNodeId = targetId;
 
     setTimeout(() => {
@@ -287,12 +299,16 @@
             name: segment,
             isFolder: true,
             fullPath: `${normalizedRoot}/${currentRel}`,
+            isPreservedFolder: file.is_already_organized,
             children: [],
             fileCount: 0,
           };
           parentNode.children = parentNode.children || [];
           parentNode.children.push(newFolder);
           folderMap.set(currentRel, newFolder);
+        } else if (!file.is_already_organized) {
+          const existingFolder = folderMap.get(currentRel)!;
+          existingFolder.isPreservedFolder = existingFolder.isPreservedFolder && file.is_already_organized;
         }
         parentNode = folderMap.get(currentRel)!;
       }
@@ -304,6 +320,7 @@
         fullPath: file.path,
         file,
         fileCount: 1,
+        isPreservedFile: file.is_already_organized,
       };
       parentNode.children = parentNode.children || [];
       parentNode.children.push(fileNode);
@@ -342,49 +359,66 @@
 
     const rootNode: TreeNodeData = {
       id: "after-root",
-      name: `✨ ${rootName} (Organizada)`,
+      name: `${rootName} (Organizada)`,
       isFolder: true,
       fullPath: rootPath,
       children: [],
       fileCount: 0,
     };
 
-    const categoryFolders = new Map<string, TreeNodeData>();
+    const folderMap = new Map<string, TreeNodeData>();
+    folderMap.set("", rootNode);
 
     for (const file of files) {
-      const catName = file.suggested_category || "Outros";
-      const catColor = file.category_color || catColorMap.get(catName.toLowerCase()) || "#3b82f6";
-      const catId = `after-cat-${catName}`;
+      const catPath = file.suggested_category || "Outros";
+      const catColor = file.category_color || catColorMap.get(catPath.toLowerCase()) || "#3b82f6";
+      const segments = catPath.replace(/\\/g, "/").split("/").map((s) => s.trim()).filter(Boolean);
 
-      if (!categoryFolders.has(catName)) {
-        const newCatFolder: TreeNodeData = {
-          id: catId,
-          name: catName,
-          isFolder: true,
-          fullPath: `${normalizedRoot}/${catName}`,
-          categoryColor: catColor,
-          categoryName: catName,
-          children: [],
-          fileCount: 0,
-        };
-        categoryFolders.set(catName, newCatFolder);
-        rootNode.children = rootNode.children || [];
-        rootNode.children.push(newCatFolder);
+      let currentRel = "";
+      let parentNode = rootNode;
+
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        currentRel = currentRel ? `${currentRel}/${segment}` : segment;
+        const folderId = `after-dir-${currentRel}`;
+
+        if (!folderMap.has(currentRel)) {
+          const newFolder: TreeNodeData = {
+            id: folderId,
+            name: segment,
+            isFolder: true,
+            fullPath: `${normalizedRoot}/${currentRel}`,
+            categoryColor: i === 0 ? catColor : undefined,
+            categoryName: currentRel,
+            isPreservedFolder: file.is_already_organized,
+            children: [],
+            fileCount: 0,
+          };
+          parentNode.children = parentNode.children || [];
+          parentNode.children.push(newFolder);
+          folderMap.set(currentRel, newFolder);
+        } else if (!file.is_already_organized) {
+          const existingFolder = folderMap.get(currentRel)!;
+          existingFolder.isPreservedFolder = existingFolder.isPreservedFolder && file.is_already_organized;
+        }
+
+        parentNode = folderMap.get(currentRel)!;
       }
 
-      const catFolder = categoryFolders.get(catName)!;
       const finalFilename = getProposedFilename(file);
+      const fileRelPath = `${currentRel}/${finalFilename}`;
 
       const fileNode: TreeNodeData = {
         id: `after-file-${file.file_id}`,
         name: finalFilename,
         isFolder: false,
-        fullPath: `${normalizedRoot}/${catName}/${finalFilename}`,
+        fullPath: `${normalizedRoot}/${fileRelPath}`,
         file,
         fileCount: 1,
+        isPreservedFile: file.is_already_organized,
       };
-      catFolder.children = catFolder.children || [];
-      catFolder.children.push(fileNode);
+      parentNode.children = parentNode.children || [];
+      parentNode.children.push(fileNode);
     }
 
     function finalizeNode(node: TreeNodeData): number {
@@ -609,6 +643,27 @@
     showToast(`${files.length} arquivos da pasta '${folder.name}' ignorados da organização.`, "info");
   }
 
+  function handleKeepPreserved(files: ClassifiedFile[]) {
+    closeContextMenu();
+    showToast(`Estrutura original de ${files.length} arquivo(s) mantida.`, "info");
+  }
+
+  function handleReorganizeWithAI(files: ClassifiedFile[]) {
+    const targetFileIds = new Set(files.map((f) => f.file_id));
+    classifiedFiles.update((list) =>
+      list.map((item) =>
+        targetFileIds.has(item.file_id)
+          ? {
+              ...item,
+              is_already_organized: false,
+            }
+          : item
+      )
+    );
+    closeContextMenu();
+    showToast(`${files.length} arquivo(s) marcados para reorganização.`, "success");
+  }
+
   async function handleAlwaysRule(file: ClassifiedFile) {
     closeContextMenu();
     try {
@@ -683,10 +738,15 @@
       const moves: FileMove[] = [];
 
       for (const file of filteredFiles) {
-        const sanitizedCat = file.suggested_category.replace(/[<>:"/\\|?*]/g, "_").trim();
+        const segments = file.suggested_category
+          .replace(/\\/g, "/")
+          .split("/")
+          .map((s) => s.replace(/[<>:"/\\|?*]/g, "_").trim())
+          .filter(Boolean);
         const sep = root.includes("\\") ? "\\" : "/";
+        const sanitizedRelPath = segments.join(sep);
         const finalFilename = getProposedFilename(file);
-        const destPath = `${root}${sep}${sanitizedCat}${sep}${finalFilename}`;
+        const destPath = `${root}${sep}${sanitizedRelPath}${sep}${finalFilename}`;
 
         moves.push({
           file_id: file.file_id,
@@ -922,6 +982,31 @@
 
       <div class="context-divider"></div>
 
+      <!-- Ações Especiais para Itens Preservados -->
+      {#if contextMenu.file.is_already_organized}
+        <button
+          class="context-item"
+          role="menuitem"
+          on:click={() => handleKeepPreserved([contextMenu.file!])}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          {$_("preview.context.keep_preserved")}
+        </button>
+        <button
+          class="context-item"
+          role="menuitem"
+          on:click={() => handleReorganizeWithAI([contextMenu.file!])}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          {$_("preview.context.reorganize_ai")}
+        </button>
+        <div class="context-divider"></div>
+      {/if}
+
       <!-- 1. Mostrar no Preview Organizado -->
       <button
         class="context-item highlight-action"
@@ -1051,6 +1136,31 @@
       </div>
 
       <div class="context-divider"></div>
+
+      <!-- Ações Especiais para Pastas Preservadas -->
+      {#if contextMenu.folder.isPreservedFolder}
+        <button
+          class="context-item"
+          role="menuitem"
+          on:click={() => handleKeepPreserved(getFolderFiles(contextMenu.folder!))}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          {$_("preview.context.keep_preserved")}
+        </button>
+        <button
+          class="context-item"
+          role="menuitem"
+          on:click={() => handleReorganizeWithAI(getFolderFiles(contextMenu.folder!))}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          {$_("preview.context.reorganize_ai")}
+        </button>
+        <div class="context-divider"></div>
+      {/if}
 
       <!-- 1. Mostrar no Preview Organizado -->
       <button

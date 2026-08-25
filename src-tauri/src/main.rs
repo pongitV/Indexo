@@ -40,6 +40,8 @@ fn main() {
             commands::profile::rename_category,
             commands::profile::merge_categories,
             commands::profile::delete_category,
+            commands::profile::clean_unused_categories,
+            commands::profile::purge_auto_categories,
             commands::profile::record_user_correction,
             commands::profile::export_profile,
             commands::profile::import_profile,

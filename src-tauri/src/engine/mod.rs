@@ -4,6 +4,7 @@ pub mod embeddings;
 pub mod llm_local;
 pub mod rules;
 pub mod renamer;
+pub mod subcategories;
 
 #[cfg(test)]
 mod tests {
@@ -102,6 +103,9 @@ mod tests {
         let emb2 = embeddings::compute_embedding(text2).unwrap();
         let emb3 = embeddings::compute_embedding(text3).unwrap();
 
+        assert_eq!(emb1.len(), embeddings::VECTOR_DIM);
+        assert_eq!(emb2.len(), embeddings::VECTOR_DIM);
+
         let sim_1_2 = embeddings::cosine_similarity(&emb1, &emb2);
         let sim_1_3 = embeddings::cosine_similarity(&emb1, &emb3);
 
@@ -129,5 +133,57 @@ mod tests {
 
         let name_en = llm_local::name_cluster(&snippets_energy, "en-US").unwrap();
         assert_eq!(name_en, "Electricity & Energy Bills");
+
+        // Teste de rejeição de ruído binário
+        let junk_snippets = vec![
+            "ihdr srgb idat 5jcb4k cannot program reloc rdata pdata".to_string(),
+        ];
+        let junk_name = llm_local::name_cluster(&junk_snippets, "pt-BR").unwrap();
+        assert_eq!(junk_name, "Documentos Diversos");
+    }
+
+    #[test]
+    fn test_subcategories_clustering() {
+        let items = vec![
+            ("f1".to_string(), "Zelda_Breath_of_the_Wild_01.png".to_string(), "Fotos e Imagens".to_string()),
+            ("f2".to_string(), "Zelda_Tears_of_the_Kingdom.png".to_string(), "Fotos e Imagens".to_string()),
+            ("f3".to_string(), "Minecraft_House_Build.png".to_string(), "Fotos e Imagens".to_string()),
+            ("f4".to_string(), "Minecraft_Redstone.png".to_string(), "Fotos e Imagens".to_string()),
+            ("f5".to_string(), "Foto_Aleatoria_Avulsa.jpg".to_string(), "Fotos e Imagens".to_string()),
+            ("f6".to_string(), "Fatura_Enel_Janeiro.pdf".to_string(), "Boletos e Faturas".to_string()),
+            ("f7".to_string(), "Conta_Luz_Enel_Fevereiro.pdf".to_string(), "Boletos e Faturas".to_string()),
+        ];
+
+        let refined = subcategories::refine_hierarchical_subcategories(&items);
+
+        assert_eq!(refined.get("f1").unwrap(), "Fotos e Imagens/Jogos/Zelda");
+        assert_eq!(refined.get("f2").unwrap(), "Fotos e Imagens/Jogos/Zelda");
+        assert_eq!(refined.get("f3").unwrap(), "Fotos e Imagens/Jogos/Minecraft");
+        assert_eq!(refined.get("f4").unwrap(), "Fotos e Imagens/Jogos/Minecraft");
+        // Arquivo avulso fica na categoria principal
+        assert_eq!(refined.get("f5").unwrap(), "Fotos e Imagens");
+        // Boletos da Enel
+        assert_eq!(refined.get("f6").unwrap(), "Boletos e Faturas/Enel");
+        assert_eq!(refined.get("f7").unwrap(), "Boletos e Faturas/Enel");
+    }
+
+    #[test]
+    fn test_detect_already_organized_folder() {
+        let root = r"C:\Users\Test\Meus Arquivos";
+
+        // Arquivo dentro de pasta estruturada
+        let organized_file = r"C:\Users\Test\Meus Arquivos\Fotos de Férias\Praia\foto1.jpg";
+        let detected = heuristics::detect_already_organized_folder(organized_file, root);
+        assert_eq!(detected, Some("Fotos de Férias/Praia".to_string()));
+
+        // Arquivo solto na raiz
+        let root_file = r"C:\Users\Test\Meus Arquivos\arquivo_solto.pdf";
+        let root_detected = heuristics::detect_already_organized_folder(root_file, root);
+        assert_eq!(root_detected, None);
+
+        // Arquivo dentro de pasta de lixo/temporária
+        let temp_file = r"C:\Users\Test\Meus Arquivos\Temp\teste.txt";
+        let temp_detected = heuristics::detect_already_organized_folder(temp_file, root);
+        assert_eq!(temp_detected, None);
     }
 }

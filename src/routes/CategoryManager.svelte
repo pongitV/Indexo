@@ -7,6 +7,8 @@
     renameCategory,
     mergeCategories,
     deleteCategory,
+    cleanUnusedCategories,
+    purgeAutoCategories,
     type Category,
   } from "../lib/api";
   import { showToast } from "../lib/stores";
@@ -21,6 +23,7 @@
   let showRenameModal = false;
   let showMergeModal = false;
   let showDeleteModal = false;
+  let showPurgeModal = false;
 
   let activeCategory: Category | null = null;
   let inputName = "";
@@ -127,6 +130,27 @@
       showToast("Erro ao excluir categoria: " + err, "error");
     }
   }
+
+  async function handlePurgeAuto() {
+    try {
+      const count = await purgeAutoCategories();
+      showPurgeModal = false;
+      showToast($_("categories.toast.cleaned", { values: { count } }), "success");
+      await fetchCategories();
+    } catch (err: any) {
+      showToast("Erro ao limpar categorias automáticas: " + err, "error");
+    }
+  }
+
+  async function handleCleanUnused() {
+    try {
+      const count = await cleanUnusedCategories();
+      showToast($_("categories.toast.cleaned", { values: { count } }), "success");
+      await fetchCategories();
+    } catch (err: any) {
+      showToast("Erro ao limpar categorias não utilizadas: " + err, "error");
+    }
+  }
 </script>
 
 <div class="category-view">
@@ -152,6 +176,16 @@
           <button class="clear-search" on:click={() => (searchQuery = "")}>✕</button>
         {/if}
       </div>
+
+      {#if categories.some(c => c.created_by === "auto")}
+        <button class="secondary-btn danger-hover" on:click={() => (showPurgeModal = true)} title={$_("categories.clean_auto")}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          {$_("categories.clean_auto")}
+        </button>
+      {/if}
 
       <button class="primary-btn" on:click={openNewModal}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -362,6 +396,30 @@
       <div class="modal-actions">
         <button class="secondary-btn" on:click={() => (showDeleteModal = false)}>Cancelar</button>
         <button class="danger-btn" on:click={handleDelete}>Excluir</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Modal: Limpar Categorias Automáticas -->
+{#if showPurgeModal}
+  <div
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    on:click|self={() => (showPurgeModal = false)}
+    on:keydown={(e) => e.key === "Escape" && (showPurgeModal = false)}
+  >
+    <div class="modal-card">
+      <h2>{$_("categories.modal.purge_title")}</h2>
+      <p class="modal-subtitle">
+        {$_("categories.modal.purge_desc")}
+      </p>
+      <div class="modal-actions">
+        <button class="secondary-btn" on:click={() => (showPurgeModal = false)}>Cancelar</button>
+        <button class="secondary-btn" on:click={handleCleanUnused}>{$_("categories.clean_unused")}</button>
+        <button class="danger-btn" on:click={handlePurgeAuto}>{$_("categories.clean_auto")}</button>
       </div>
     </div>
   </div>

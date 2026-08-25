@@ -25,6 +25,8 @@ export interface ClassifiedFile {
   confidence: number;
   tier_used: number; // 1 = heuristica, 2 = embedding/cluster, 3 = LLM local
   size_bytes?: number;
+  is_already_organized?: boolean;
+  original_relative_folder?: string | null;
 }
 
 export interface ClassifyProgressPayload {
@@ -91,6 +93,14 @@ export async function mergeCategories(sourceId: string, targetId: string): Promi
 
 export async function deleteCategory(id: string): Promise<void> {
   return invoke<void>("delete_category", { id });
+}
+
+export async function cleanUnusedCategories(): Promise<number> {
+  return invoke<number>("clean_unused_categories");
+}
+
+export async function purgeAutoCategories(): Promise<number> {
+  return invoke<number>("purge_auto_categories");
 }
 
 export async function recordUserCorrection(

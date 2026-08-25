@@ -139,7 +139,23 @@ pub fn classify_by_heuristics(
     }
 
     let final_confidence = score.clamp(0.0, 0.95);
-    let is_resolved = final_confidence >= CONFIDENCE_THRESHOLD && !is_generic_name && !has_extension_mismatch;
+    
+    let effective_ext = if !ext_declared.is_empty() {
+        ext_declared.as_str()
+    } else {
+        ext_detected.as_str()
+    };
+
+    // Documentos textuais com nomes genéricos requerem análise semântica de conteúdo (Camada 2).
+    // Arquivos de mídia (fotos, vídeos, áudios), binários e códigos são resolvidos diretamente pelas heurísticas.
+    let is_textual_doc = ["pdf", "docx", "doc", "odt", "rtf", "txt", "md", "csv", "tsv", "xlsx", "xls", "ods"]
+        .contains(&effective_ext);
+
+    let is_resolved = if is_textual_doc {
+        final_confidence >= CONFIDENCE_THRESHOLD && !is_generic_name && !has_extension_mismatch
+    } else {
+        nlp_category.is_some() && !has_extension_mismatch && final_confidence >= 0.60
+    };
 
     HeuristicResult {
         category_guess: nlp_category,
@@ -388,6 +404,52 @@ fn get_parent_directory_hint(file_path: &str) -> Option<String> {
     } else {
         Some(parent_name)
     }
+}
+
+/// Detecta se um arquivo já está situado em uma subpasta organizada/estruturada em relação à raiz escaneada
+pub fn detect_already_organized_folder(file_path: &str, root_path: &str) -> Option<String> {
+    let p_file = Path::new(file_path);
+    let p_root = Path::new(root_path);
+
+    let parent = p_file.parent()?;
+    if parent == p_root {
+        // Arquivo está solto diretamente na raiz escaneada -> precisa de organização
+        return None;
+    }
+
+    let relative = match parent.strip_prefix(p_root) {
+        Ok(r) => r,
+        Err(_) => return None,
+    };
+
+    let rel_str = relative.to_string_lossy().replace('\\', "/");
+    let segments: Vec<&str> = rel_str
+        .split('/')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if segments.is_empty() {
+        return None;
+    }
+
+    // Pastas de descarte / lixo que NÃO devem ser consideradas organizadas
+    let generic_dump_folders = [
+        "downloads", "desktop", "temp", "tmp", "files", "arquivos", "misc",
+        "nova pasta", "nova_pasta", "new folder", "new_folder", "outros",
+        "unorganized", "variados", "pasta", "folder",
+    ];
+
+    let first_lower = segments[0].to_lowercase();
+    if generic_dump_folders.contains(&first_lower.as_str()) {
+        return None;
+    }
+
+    if first_lower.len() < 2 {
+        return None;
+    }
+
+    Some(segments.join("/"))
 }
 
 fn contains_any(text: &str, keywords: &[&str]) -> bool {
