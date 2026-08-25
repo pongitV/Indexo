@@ -76,18 +76,18 @@ Unlike conventional file organizers that rely on fixed extensions or rigid manua
 Indexo evaluates every file through a 3-tier hierarchical cascaded pipeline:
 
 ```mermaid
-graph TD
-    A[Selected File] --> P{Already in Organized Folder?}
-    P -->|Yes| PRESERV[Preserve Original Structure with Review Badge]
-    P -->|No| B[Tier 1: Fast Heuristics & Real Bytes]
-    B -->|Magic Numbers + User Profile Rules| Z{Confidence >= 80%?}
-    Z -->|Yes| R1[Instant Match 0ms]
-    Z -->|No| C[Tier 2: Text Extraction & 256D Embeddings]
-    C -->|Vector Similarity 32 Topical Anchors| Y{Confidence >= 70%?}
-    Y -->|Yes| R2[Semantic Match ~5ms]
-    Y -->|No| D[Tier 3: Local SLM/LLM Reasoning]
-    D -->|Local GBNF/JSON Inference| R3[Deep Reasoning Classification]
-    R1 --> SUB[Subcategories Engine: Games / Companies / Subjects]
+flowchart TD
+    A["Selected File"] --> P{"Already in Organized Folder?"}
+    P -->|"Yes"| PRESERV["Preserve Original Structure (Review Badge)"]
+    P -->|"No"| B["Tier 1: Fast Heuristics & Real Bytes"]
+    B --> Z{"Confidence >= 80%?"}
+    Z -->|"Yes"| R1["Instant Match (0ms)"]
+    Z -->|"No"| C["Tier 2: Text Extraction & 256D Embeddings"]
+    C --> Y{"Confidence >= 70%?"}
+    Y -->|"Yes"| R2["Semantic Match (~5ms)"]
+    Y -->|"No"| D["Tier 3: Local SLM Reasoning"]
+    D --> R3["Deep Reasoning Classification"]
+    R1 --> SUB["Subcategories Engine (Games / Companies / Subjects)"]
     R2 --> SUB
     R3 --> SUB
 ```
@@ -110,43 +110,48 @@ graph TD
 ## System Architecture
 
 ```mermaid
-graph TD
-    subgraph Frontend [Frontend Svelte 5 / TypeScript]
-        UI[App.svelte / Routes]
-        ST[Reactive Stores]
-        I18N[svelte-i18n]
-        TREE[FileTreeNode.svelte]
+flowchart TB
+    subgraph FE ["Frontend (Svelte 5 / TypeScript)"]
+        UI["App.svelte (Navigation & Views)"]
+        ST["Reactive Stores (Global State)"]
+        TREE["FileTreeNode (Interactive Tree)"]
     end
 
-    subgraph IPC [Tauri 2 IPC Bridge]
-        CMD_SCAN[scan_folder / scan_specific_files]
-        CMD_CLASS[classify_scanned_files]
-        CMD_APPLY[apply_organization / undo_last_apply]
-        CMD_RENAME[suggest_semantic_names / apply_renames]
-        CMD_PROF[get_profile / update_rule / clean_categories]
+    subgraph IPC ["IPC Layer (Tauri 2 Bridge)"]
+        CMD_SCAN["scan_folder / scan_specific_files"]
+        CMD_CLASS["classify_scanned_files"]
+        CMD_APPLY["apply_organization / undo_last_apply"]
+        CMD_RENAME["suggest_semantic_names / apply_renames"]
+        CMD_PROF["profile / rules / maintenance"]
     end
 
-    subgraph Backend [Native Rust Backend]
-        SCANNER[walkdir + rayon Scanner]
-        EXTRACT[Content Extractors PDF/DOCX/XLSX]
-        ENGINE[Semantic Classifier & Subcategories Engine]
-        RENAMER[Smart Renamer Engine]
-        MOVER[Safe File Operations & Undo Log]
-        DB[(Local SQLite profile.db)]
+    subgraph BE ["Native Backend (Rust 2021)"]
+        SCANNER["Parallel Scanner (walkdir + rayon)"]
+        EXTRACT["Text Extraction (PDF / DOCX / XLSX)"]
+        ENGINE["Semantic Classifier & Subcategories"]
+        RENAMER["Smart Renamer Engine"]
+        MOVER["Safe File Operations & Audit Log"]
+        DB[("Local SQLite (data/profile.db)")]
     end
 
     UI --> ST
-    ST --> IPC
-    IPC --> SCANNER
-    SCANNER --> EXTRACT
-    EXTRACT --> ENGINE
-    ENGINE --> RENAMER
-    ENGINE --> DB
-    ENGINE --> IPC
-    IPC --> TREE
+    ST --> CMD_SCAN
+    ST --> CMD_CLASS
+    ST --> CMD_RENAME
     TREE --> CMD_APPLY
+    UI --> CMD_PROF
+
+    CMD_SCAN --> SCANNER
+    CMD_CLASS --> EXTRACT
+    EXTRACT --> ENGINE
+    CMD_CLASS --> ENGINE
+    CMD_RENAME --> RENAMER
     CMD_APPLY --> MOVER
+    CMD_PROF --> DB
+
+    ENGINE --> DB
     MOVER --> DB
+    SCANNER --> DB
 ```
 
 ---

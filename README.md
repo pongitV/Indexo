@@ -76,18 +76,18 @@ Diferente de organizadores tradicionais baseados em extensões fixas ou regras m
 O pipeline de classificação do Indexo avalia cada arquivo em três camadas hierárquicas em cascata:
 
 ```mermaid
-graph TD
-    A[Arquivo Selecionado] --> P{Já está em pasta organizada?}
-    P -->|Sim| PRESERV[Preserva Estrutura Original com Badge de Revisão]
-    P -->|Não| B[Camada 1: Heurísticas & Bytes Reais]
-    B -->|Magic Numbers + Regras do Perfil| Z{Confiança >= 80%?}
-    Z -->|Sim| R1[Classificação Rápida 0ms]
-    Z -->|Não| C[Camada 2: Extração de Texto & Embeddings 256D]
-    C -->|Similaridade Vetorial 32 Âncoras Temáticas| Y{Confiança >= 70%?}
-    Y -->|Sim| R2[Classificação Semântica ~5ms]
-    Y -->|Não| D[Camada 3: SLM/LLM Local Raciocínio]
-    D -->|Inferência Local GBNF/JSON| R3[Classificação Profunda Local]
-    R1 --> SUB[Motor de Subcategorias: Jogos / Empresas / Assuntos]
+flowchart TD
+    A["Arquivo Selecionado"] --> P{"Já está em pasta organizada?"}
+    P -->|"Sim"| PRESERV["Preserva Estrutura Original (Badge de Revisão)"]
+    P -->|"Não"| B["Camada 1: Heurísticas & Assinatura de Bytes"]
+    B --> Z{"Confiança >= 80%?"}
+    Z -->|"Sim"| R1["Classificação Rápida (0ms)"]
+    Z -->|"Não"| C["Camada 2: Extração Textual & Embeddings 256D"]
+    C --> Y{"Confiança >= 70%?"}
+    Y -->|"Sim"| R2["Classificação Semântica (~5ms)"]
+    Y -->|"Não"| D["Camada 3: Raciocínio Profundo SLM Local"]
+    D --> R3["Classificação Profunda Local"]
+    R1 --> SUB["Motor de Subcategorias (Jogos / Empresas / Assuntos)"]
     R2 --> SUB
     R3 --> SUB
 ```
@@ -110,43 +110,48 @@ graph TD
 ## Arquitetura do Sistema
 
 ```mermaid
-graph TD
-    subgraph Frontend [Frontend Svelte 5 / TypeScript]
-        UI[App.svelte / Rotas]
-        ST[Stores Reativos]
-        I18N[svelte-i18n]
-        TREE[FileTreeNode.svelte]
+flowchart TB
+    subgraph FE ["Frontend (Svelte 5 / TypeScript)"]
+        UI["App.svelte (Navegação & Telas)"]
+        ST["Stores Reativos (Estado Global)"]
+        TREE["FileTreeNode (Árvore Interativa)"]
     end
 
-    subgraph IPC [Tauri 2 IPC Bridge]
-        CMD_SCAN[scan_folder / scan_specific_files]
-        CMD_CLASS[classify_scanned_files]
-        CMD_APPLY[apply_organization / undo_last_apply]
-        CMD_RENAME[suggest_semantic_names / apply_renames]
-        CMD_PROF[get_profile / update_rule / clean_categories]
+    subgraph IPC ["Camada IPC (Tauri 2 Bridge)"]
+        CMD_SCAN["scan_folder / scan_specific_files"]
+        CMD_CLASS["classify_scanned_files"]
+        CMD_APPLY["apply_organization / undo_last_apply"]
+        CMD_RENAME["suggest_semantic_names / apply_renames"]
+        CMD_PROF["profile / rules / maintenance"]
     end
 
-    subgraph Backend [Backend Rust Nativo]
-        SCANNER[walkdir + rayon Scanner]
-        EXTRACT[Content Extractors PDF/DOCX/XLSX]
-        ENGINE[Semantic Classifier & Subcategories Engine]
-        RENAMER[Smart Renamer Engine]
-        MOVER[Safe File Operations & Undo Log]
-        DB[(SQLite Local profile.db)]
+    subgraph BE ["Backend Nativo (Rust 2021)"]
+        SCANNER["Scanner Paralelo (walkdir + rayon)"]
+        EXTRACT["Extração de Texto (PDF / DOCX / XLSX)"]
+        ENGINE["Motor Semântico & Subcategorias"]
+        RENAMER["Motor do Renomeador Inteligente"]
+        MOVER["Operações Seguras & Log de Auditoria"]
+        DB[("SQLite Local (data/profile.db)")]
     end
 
     UI --> ST
-    ST --> IPC
-    IPC --> SCANNER
-    SCANNER --> EXTRACT
-    EXTRACT --> ENGINE
-    ENGINE --> RENAMER
-    ENGINE --> DB
-    ENGINE --> IPC
-    IPC --> TREE
+    ST --> CMD_SCAN
+    ST --> CMD_CLASS
+    ST --> CMD_RENAME
     TREE --> CMD_APPLY
+    UI --> CMD_PROF
+
+    CMD_SCAN --> SCANNER
+    CMD_CLASS --> EXTRACT
+    EXTRACT --> ENGINE
+    CMD_CLASS --> ENGINE
+    CMD_RENAME --> RENAMER
     CMD_APPLY --> MOVER
+    CMD_PROF --> DB
+
+    ENGINE --> DB
     MOVER --> DB
+    SCANNER --> DB
 ```
 
 ---
