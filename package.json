@@ -1,0 +1,23 @@
+{
+  "name": "indexo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "svelte": "^5",
+    "svelte-i18n": "^4"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/cli": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@sveltejs/vite-plugin-svelte": "^4",
+    "typescript": "^5",
+    "vite": "^5"
+  }
+}
