@@ -23,7 +23,7 @@
 </p>
 
 > [!NOTE]
-> **Versão em Python disponível**: Procurando pela versão anterior construída em Python (PySide6 / Qt)? Ela está totalmente preservada, funcional e documentada na branch [`Indexo-py`](https://github.com/pongitV/Indexo/tree/Indexo-py).
+> **Versão em Python disponível**: Procurando pela versão anterior construída em Python (PySide6 / Qt)? Ela está totalmente preservada, funcional e disponível no repositório dedicado [`Indexo-py`](https://github.com/pongitV/Indexo-py).
 
 ---
 

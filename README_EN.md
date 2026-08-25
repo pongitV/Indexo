@@ -23,7 +23,7 @@
 </p>
 
 > [!NOTE]
-> **Python version available**: Looking for the previous implementation built in Python (PySide6 / Qt)? It is fully preserved, functional, and documented on the [`Indexo-py`](https://github.com/pongitV/Indexo/tree/Indexo-py) branch.
+> **Python version available**: Looking for the previous implementation built in Python (PySide6 / Qt)? It is fully preserved, functional, and available in the dedicated repository [`Indexo-py`](https://github.com/pongitV/Indexo-py).
 
 ---
 
@@ -184,40 +184,40 @@ Indexo/
 │   ├── src/                        # Rust source code
 │   │   ├── main.rs                 # Executable entrypoint and command registry
 │   │   │
-│   │   ├── commands/               # Command handlers invoked by frontend IPC
-│   │   │   ├── mod.rs              # Command module exports
-│   │   │   ├── scan.rs             # Recursive directory scanner command
-│   │   │   ├── classify.rs         # Batch semantic classification command
-│   │   │   ├── apply.rs            # Physical move command and undo logger
-│   │   │   └── profile.rs          # Profile querying and persistence command
+│   │   ├── commands/               # Handlers de comandos invocados pelo frontend
+│   │   │   ├── mod.rs              # Exportação dos módulos de comandos
+│   │   │   ├── scan.rs             # Comando de varredura recursiva de diretórios
+│   │   │   ├── classify.rs         # Comando de classificação semântica em lote
+│   │   │   ├── apply.rs            # Comando de movimentação de arquivos e geração de log
+│   │   │   └── profile.rs          # Comando de consulta e persistência de perfil
 │   │   │
-│   │   ├── engine/                 # Intelligence and classification engine
-│   │   │   ├── mod.rs              # Classification pipeline orchestrator
-│   │   │   ├── heuristics.rs       # Tier 1: Heuristics, extensions, and magic numbers
-│   │   │   ├── content_extract.rs  # Text extraction from PDF, DOCX, XLSX, and TXT
-│   │   │   ├── embeddings.rs       # Tier 2: Vector embeddings and cosine similarity
-│   │   │   ├── llm_local.rs        # Tier 3: Local SLM/LLM inference
-│   │   │   └── rules.rs            # Rule evaluator and dynamic synthesizer
+│   │   ├── engine/                 # Núcleo do motor de inteligência e classificação
+│   │   │   ├── mod.rs              # Orquestrador do pipeline de classificação
+│   │   │   ├── heuristics.rs       # Camada 1: Heurísticas, extensões e magic numbers
+│   │   │   ├── content_extract.rs  # Extração de texto de PDF, DOCX, XLSX e texto puro
+│   │   │   ├── embeddings.rs       # Camada 2: Embeddings vetoriais e similaridade de cosseno
+│   │   │   ├── llm_local.rs        # Camada 3: Inferência local com SLMs/LLMs
+│   │   │   └── rules.rs            # Avaliador e sintetizador dinâmico de regras
 │   │   │
-│   │   ├── fs_ops/                 # Filesystem operations and security
-│   │   │   ├── mod.rs              # Path sanitization and anti-traversal guards
-│   │   │   └── mover.rs            # Atomic move, collision resolution, and rollback
+│   │   ├── fs_ops/                 # Operações no sistema de arquivos e segurança
+│   │   │   ├── mod.rs              # Tratamento de caminhos e prevenção anti-traversal
+│   │   │   └── mover.rs            # Movimentação atômica, resolução de colisão e rollback
 │   │   │
-│   │   └── db/                     # Local SQLite database layer
-│   │       ├── mod.rs              # Database connection and transactions (data/profile.db)
-│   │       ├── models.rs           # Data structures (Tag, Category, Rule, ActionLog)
-│   │       └── schema.sql          # Initial relational database schema and indices
+│   │   └── db/                     # Camada de banco de dados SQLite local
+│   │       ├── mod.rs              # Conexão e transações com data/profile.db
+│   │       ├── models.rs           # Estruturas de dados (Tag, Category, Rule, ActionLog)
+│   │       └── schema.sql          # Esquema relacional inicial com tabelas e índices
 │   │
-│   ├── capabilities/               # Tauri 2 security policies and permissions
-│   │   └── default.json            # Dialog, filesystem, and IPC capability grants
+│   ├── capabilities/               # Políticas de segurança e permissões do Tauri 2
+│   │   └── default.json            # Permissões de diálogo, sistema de arquivos e IPC
 │   │
-│   └── icons/                      # Application icons in multiple resolutions
-│       ├── icon.ico                # Windows executable icon
-│       ├── icon.png                # High-resolution standard icon
-│       └── ...                     # Cross-platform icon assets
+│   └── icons/                      # Ícones da aplicação em múltiplos formatos
+│       ├── icon.ico                # Ícone do executável Windows
+│       ├── icon.png                # Ícone padrão em alta resolução
+│       └── ...                     # Ícones para resoluções variadas
 │
-└── data/                           # Local persistence directory (created at runtime)
-    └── profile.db                  # SQLite database holding learned user profile
+└── data/                           # Diretório de persistência local (criado em runtime)
+    └── profile.db                  # Banco SQLite do perfil de aprendizado do usuário
 ```
 
 ---
