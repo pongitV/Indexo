@@ -27,28 +27,28 @@
 
 ---
 
-## 📑 Sumário
+## Sumário
 
-- [Sobre o Projeto](#-sobre-o-projeto)
-- [Principais Destaques](#-principais-destaques)
-- [Motor de Classificação Semântica em 3 Camadas](#-motor-de-classificação-semântica-em-3-camadas)
-- [Arquitetura do Sistema](#-arquitetura-do-sistema)
-- [Estrutura Completa do Repositório](#-estrutura-completa-do-repositório)
-- [Fluxo de Experiência do Usuário (UI/UX)](#-fluxo-de-experiência-do-usuário-uiux)
-- [Como Executar e Desenvolver](#-como-executar-e-desenvolver)
-- [Gerando o Executável Portátil Standalone](#-gerando-o-executável-portátil-standalone)
-- [Roteiro e Especificação de Implementação](#-roteiro-e-especificação-de-implementação)
-- [Licença](#-licença)
+- [Sobre o Projeto](#sobre-o-projeto)
+- [Principais Destaques](#principais-destaques)
+- [Motor de Classificação Semântica em 3 Camadas](#motor-de-classificação-semântica-em-3-camadas)
+- [Arquitetura do Sistema](#arquitetura-do-sistema)
+- [Estrutura Completa do Repositório](#estrutura-completa-do-repositório)
+- [Fluxo de Experiência do Usuário (UI/UX)](#fluxo-de-experiência-do-usuário-uiux)
+- [Como Executar e Desenvolver](#como-executar-e-desenvolver)
+- [Gerando o Executável Portátil Standalone](#gerando-o-executável-portátil-standalone)
+- [Roteiro e Especificação de Implementação](#roteiro-e-especificação-de-implementação)
+- [Licença](#licença)
 
 ---
 
-## 💡 Sobre o Projeto
+## Sobre o Projeto
 
-O **Indexo** é um organizador e classificador semântico de arquivos projetado para resolver a desordem crônica de diretórios complexos no Windows (como pastas *Downloads*, *Documentos*, *Área de Trabalho* ou coleções de projetos). 
+O **Indexo** é um organizador e classificador semântico de arquivos projetado para resolver a desordem crônica de diretórios complexos no Windows (como pastas *Downloads*, *Documentos*, *Área de Trabalho* ou coleções de projetos).
 
 Diferente de organizadores tradicionais baseados em extensões fixas ou regras manuais rígidas, o Indexo opera sob o princípio de **inteligência adaptativa sem taxonomia pré-definida (zero-hardcode)**: ele analisa o conteúdo real dos arquivos (inspecionando *magic numbers*, extraindo textos de PDFs/Office e avaliando similaridade semântica) e agrupa tudo dinamicamente em categorias legíveis e naturais.
 
-### 🌟 Pilares Fundamentais:
+### Pilares Fundamentais:
 1. **100% Offline & Privado**: Nenhum arquivo, metadado ou dado de telemetria sai da máquina do usuário.
 2. **Alta Performance & Baixo Consumo**: Backend compilado em **Rust 2021** com paralelismo real via `rayon`, processando milhares de arquivos sem travamentos e consumindo mínima memória RAM.
 3. **Interface Moderna & Reativa**: Frontend construído com **Svelte 5** e **TypeScript**, proporcionando uma experiência desktop fluida, suporte a temas (claro/escuro) e internacionalização (pt-BR / en-US).
@@ -56,18 +56,18 @@ Diferente de organizadores tradicionais baseados em extensões fixas ou regras m
 
 ---
 
-## ✨ Principais Destaques
+## Principais Destaques
 
-* 🧠 **Zero-Hardcode & Categorização Dinâmica**: O aplicativo não impõe regras engessadas de fábrica. As categorias e tags são sintetizadas em tempo real a partir dos arquivos reais do usuário.
-* 🔍 **Inspeção Real de Conteúdo**: Não confia cegamente em extensões declaradas. Detecta o formato real pelos bytes de cabeçalho (*magic numbers*) e extrai texto de PDFs, DOCX, XLSX, TXT, MD e CSV.
-* 📊 **Pré-visualização Lado a Lado (Antes x Depois)**: Comparação visual clara entre a estrutura original e a proposta de destino antes de qualquer operação no disco.
-* 🖱️ **Aprendizado Incremental por Correção Manual**: Permite corrigir classificações com o botão direito (alterar categoria, criar nova tag, criar regra permanente). Cada correção alimenta o banco SQLite local (`data/profile.db`), aprimorando classificações futuras.
-* 🔄 **Reversão Completa de Sessão (Undo)**: Trilha de auditoria transacional para reverter qualquer organização com restauração precisa.
-* 📦 **100% Portátil (.exe Standalone)**: Roda diretamente sem instalador, sem tocar no `%APPDATA%` ou no Registro do Windows. Copiar a pasta do executável copia todo o perfil de aprendizado.
+* **Zero-Hardcode & Categorização Dinâmica**: O aplicativo não impõe regras engessadas de fábrica. As categorias e tags são sintetizadas em tempo real a partir dos arquivos reais do usuário.
+* **Inspeção Real de Conteúdo**: Não confia cegamente em extensões declaradas. Detecta o formato real pelos bytes de cabeçalho (*magic numbers*) e extrai texto de PDFs, DOCX, XLSX, TXT, MD e CSV.
+* **Pré-visualização Lado a Lado (Antes x Depois)**: Comparação visual clara entre a estrutura original e a proposta de destino antes de qualquer operação no disco.
+* **Aprendizado Incremental por Correção Manual**: Permite corrigir classificações com o botão direito (alterar categoria, criar nova tag, criar regra permanente). Cada correção alimenta o banco SQLite local (`data/profile.db`), aprimorando classificações futuras.
+* **Reversão Completa de Sessão (Undo)**: Trilha de auditoria transacional para reverter qualquer organização com restauração precisa.
+* **100% Portátil (.exe Standalone)**: Roda diretamente sem instalador, sem tocar no `%APPDATA%` ou no Registro do Windows. Copiar a pasta do executável copia todo o perfil de aprendizado.
 
 ---
 
-## 🧠 Motor de Classificação Semântica em 3 Camadas
+## Motor de Classificação Semântica em 3 Camadas
 
 O pipeline de classificação do Indexo avalia cada arquivo em três camadas hierárquicas em cascata:
 
@@ -94,7 +94,7 @@ graph TD
 
 ---
 
-## 🏛️ Arquitetura do Sistema
+## Arquitetura do Sistema
 
 ```mermaid
 graph TD
@@ -135,7 +135,7 @@ graph TD
 
 ---
 
-## 📂 Estrutura Completa do Repositório
+## Estrutura Completa do Repositório
 
 ```text
 Indexo/
@@ -222,7 +222,7 @@ Indexo/
 
 ---
 
-## 🖥️ Fluxo de Experiência do Usuário (UI/UX)
+## Fluxo de Experiência do Usuário (UI/UX)
 
 1. **Seleção de Pasta**: O usuário abre o aplicativo e seleciona ou arrasta a pasta de origem.
 2. **Varredura e Extração**: O motor em Rust varre subpastas em paralelo, detecta *magic numbers* e extrai textos em milissegundos, com feedback de progresso na tela.
@@ -232,7 +232,7 @@ Indexo/
 
 ---
 
-## 🚀 Como Executar e Desenvolver
+## Como Executar e Desenvolver
 
 ### Pré-requisitos
 * **Windows 10 ou 11 (64-bit)**
@@ -262,7 +262,7 @@ Este comando iniciará o servidor de desenvolvimento Vite e a janela nativa do T
 
 ---
 
-## 📦 Gerando o Executável Portátil Standalone
+## Gerando o Executável Portátil Standalone
 
 Para compilar a aplicação em modo release otimizado e gerar o `.exe` autônomo:
 
@@ -277,7 +277,7 @@ O binário portátil standalone será gerado em:
 
 ---
 
-## 📋 Roteiro e Especificação de Implementação
+## Roteiro e Especificação de Implementação
 
 O projeto conta com uma especificação técnica minuciosa detalhada no arquivo [PLANO_IMPLEMENTACAO.md](PLANO_IMPLEMENTACAO.md):
 
@@ -288,6 +288,6 @@ O projeto conta com uma especificação técnica minuciosa detalhada no arquivo 
 
 ---
 
-## 📄 Licença
+## Licença
 
 Este projeto é software livre e de código aberto, distribuído sob a licença **GNU General Public License v3.0 (GPLv3)**. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.

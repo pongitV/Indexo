@@ -27,28 +27,28 @@
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [About the Project](#-about-the-project)
-- [Key Highlights](#-key-highlights)
-- [3-Tier Semantic Classification Engine](#-3-tier-semantic-classification-engine)
-- [System Architecture](#-system-architecture)
-- [Complete Repository Structure](#-complete-repository-structure)
-- [User Experience Flow (UI/UX)](#-user-experience-flow-uiux)
-- [Getting Started & Development](#-getting-started--development)
-- [Building the Standalone Portable Executable](#-building-the-standalone-portable-executable)
-- [Implementation Roadmap and Specification](#-implementation-roadmap-and-specification)
-- [License](#-license)
+- [About the Project](#about-the-project)
+- [Key Highlights](#key-highlights)
+- [3-Tier Semantic Classification Engine](#3-tier-semantic-classification-engine)
+- [System Architecture](#system-architecture)
+- [Complete Repository Structure](#complete-repository-structure)
+- [User Experience Flow (UI/UX)](#user-experience-flow-uiux)
+- [Getting Started & Development](#getting-started--development)
+- [Building the Standalone Portable Executable](#building-the-standalone-portable-executable)
+- [Implementation Roadmap and Specification](#implementation-roadmap-and-specification)
+- [License](#license)
 
 ---
 
-## 💡 About the Project
+## About the Project
 
 **Indexo** is a semantic file organizer and classifier engineered to resolve chronic clutter across complex Windows directory structures (such as *Downloads*, *Documents*, *Desktop*, or scattered project folders).
 
 Unlike conventional file organizers that rely on fixed extensions or rigid manual rules, Indexo operates under the principle of **adaptive intelligence without predefined taxonomies (zero-hardcode)**: it analyzes the genuine content of files (inspecting *magic numbers*, extracting text from PDFs/Office files, and evaluating semantic similarity) and dynamically clusters files into natural, human-readable categories.
 
-### 🌟 Core Principles:
+### Core Principles:
 1. **100% Offline & Private**: Zero user data, metadata, or telemetry ever leaves your machine.
 2. **High Performance & Low Memory Footprint**: Backend compiled in **Rust 2021** with true multithreading via `rayon`, scanning thousands of files seamlessly with minimal RAM consumption.
 3. **Modern & Reactive UI**: Frontend built with **Svelte 5** and **TypeScript**, providing a fluid desktop experience, theme switching (dark/light), and internationalization (pt-BR / en-US).
@@ -56,18 +56,18 @@ Unlike conventional file organizers that rely on fixed extensions or rigid manua
 
 ---
 
-## ✨ Key Highlights
+## Key Highlights
 
-* 🧠 **Zero-Hardcode & Dynamic Categorization**: No static factory taxonomies. Categories and tags are synthesized in real-time based on the user's actual files.
-* 🔍 **Genuine Content Inspection**: Never trusts declared file extensions blindly. Identifies authentic formats via header bytes (*magic numbers*) and extracts text from PDF, DOCX, XLSX, TXT, MD, and CSV.
-* 📊 **Side-by-Side Visual Preview (Before vs. After)**: Clear visual comparison between current directory trees and proposed target paths before any filesystem operation occurs.
-* 🖱️ **Incremental Learning via Manual Corrections**: Correct any classification with right-click context actions (change category, create new tag, create permanent rule). Every correction updates the local SQLite profile (`data/profile.db`), enhancing future classification accuracy.
-* 🔄 **Full Session Reversion (Undo)**: Transactional audit log allows users to revert any completed organization session with complete precision.
-* 📦 **100% Portable (.exe Standalone)**: Operates standalone without installers, registry keys, or `%APPDATA%` pollution. Moving the application folder preserves the entire learned profile.
+* **Zero-Hardcode & Dynamic Categorization**: No static factory taxonomies. Categories and tags are synthesized in real-time based on the user's actual files.
+* **Genuine Content Inspection**: Never trusts declared file extensions blindly. Identifies authentic formats via header bytes (*magic numbers*) and extracts text from PDF, DOCX, XLSX, TXT, MD, and CSV.
+* **Side-by-Side Visual Preview (Before vs. After)**: Clear visual comparison between current directory trees and proposed target paths before any filesystem operation occurs.
+* **Incremental Learning via Manual Corrections**: Correct any classification with right-click context actions (change category, create new tag, create permanent rule). Every correction updates the local SQLite profile (`data/profile.db`), enhancing future classification accuracy.
+* **Full Session Reversion (Undo)**: Transactional audit log allows users to revert any completed organization session with complete precision.
+* **100% Portable (.exe Standalone)**: Operates standalone without installers, registry keys, or `%APPDATA%` pollution. Moving the application folder preserves the entire learned profile.
 
 ---
 
-## 🧠 3-Tier Semantic Classification Engine
+## 3-Tier Semantic Classification Engine
 
 Indexo evaluates every file through a 3-tier hierarchical cascaded pipeline:
 
@@ -94,7 +94,7 @@ graph TD
 
 ---
 
-## 🏛️ System Architecture
+## System Architecture
 
 ```mermaid
 graph TD
@@ -135,7 +135,7 @@ graph TD
 
 ---
 
-## 📂 Complete Repository Structure
+## Complete Repository Structure
 
 ```text
 Indexo/
@@ -222,7 +222,7 @@ Indexo/
 
 ---
 
-## 🖥️ User Experience Flow (UI/UX)
+## User Experience Flow (UI/UX)
 
 1. **Folder Selection**: Open the app and select or drag-and-drop any target folder.
 2. **Scanning & Extraction**: The native Rust engine scans directories in parallel, identifying *magic numbers* and extracting text in milliseconds.
@@ -232,7 +232,7 @@ Indexo/
 
 ---
 
-## 🚀 Getting Started & Development
+## Getting Started & Development
 
 ### Prerequisites
 * **Windows 10 or 11 (64-bit)**
@@ -262,7 +262,7 @@ This launches the Vite development server with Hot Module Replacement (HMR) and 
 
 ---
 
-## 📦 Building the Standalone Portable Executable
+## Building the Standalone Portable Executable
 
 To compile the optimized release binary and package the standalone `.exe`:
 
@@ -277,7 +277,7 @@ The self-contained standalone executable will be located at:
 
 ---
 
-## 📋 Implementation Roadmap and Specification
+## Implementation Roadmap and Specification
 
 Comprehensive technical specifications are documented in [PLANO_IMPLEMENTACAO.md](PLANO_IMPLEMENTACAO.md):
 
@@ -288,6 +288,6 @@ Comprehensive technical specifications are documented in [PLANO_IMPLEMENTACAO.md
 
 ---
 
-## 📄 License
+## License
 
 This project is free and open-source software, distributed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for more details.
