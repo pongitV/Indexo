@@ -59,10 +59,14 @@ Unlike conventional file organizers that rely on fixed extensions or rigid manua
 ## Key Highlights
 
 * **Zero-Hardcode & Dynamic Categorization**: No static factory taxonomies. Categories and tags are synthesized in real-time based on the user's actual files.
+* **Intelligent Hierarchical Subcategories**: When 2 or more files in the same category share an entity (games like *Zelda*, *Minecraft*; companies like *Enel*, *Nubank*; or subjects like *Beach*, *Projects*), Indexo automatically creates deep subfolders (e.g., `Images/Games/Zelda` or `Bills & Invoices/Enel`).
+* **Detection & Preservation of Organized Folders**: Subfolders with existing coherent structure (such as `Vacation Photos/Beach/`) are automatically detected, preserved by default with an SVG review indicator in preview, and offer quick toggle options to keep or reorganize.
+* **Batch Smart Renamer**: Standardizes and cleans file names in batch, removing camera/app noise prefixes (`IMG_`, `WA_`, `Scan_`), extracting formatted dates, inheriting subcategory entities, and preserving numerical series sequences (`_01`, `_02`).
 * **Genuine Content Inspection**: Never trusts declared file extensions blindly. Identifies authentic formats via header bytes (*magic numbers*) and extracts text from PDF, DOCX, XLSX, TXT, MD, and CSV.
-* **Side-by-Side Visual Preview (Before vs. After)**: Clear visual comparison between current directory trees and proposed target paths before any filesystem operation occurs.
+* **Side-by-Side Visual Preview (Before vs. After)**: Clear visual comparison between current directory trees and proposed multi-level target paths before any filesystem operation occurs.
 * **Incremental Learning via Manual Corrections**: Correct any classification with right-click context actions (change category, create new tag, create permanent rule). Every correction updates the local SQLite profile (`data/profile.db`), enhancing future classification accuracy.
-* **Full Session Reversion (Undo)**: Transactional audit log allows users to revert any completed organization session with complete precision.
+* **Tag & Category Manager**: Dedicated interface to create, rename, merge, audit, and purge automated or unused tags/categories with SQLite `VACUUM` optimization.
+* **Full Session Reversion (Undo)**: Transactional audit log allows users to revert any completed organization or renaming session with 1-click precision.
 * **100% Portable (.exe Standalone)**: Operates standalone without installers, registry keys, or `%APPDATA%` pollution. Moving the application folder preserves the entire learned profile.
 
 ---
@@ -73,24 +77,33 @@ Indexo evaluates every file through a 3-tier hierarchical cascaded pipeline:
 
 ```mermaid
 graph TD
-    A[Selected File] --> B[Tier 1: Fast Heuristics & Real Bytes]
+    A[Selected File] --> P{Already in Organized Folder?}
+    P -->|Yes| PRESERV[Preserve Original Structure with Review Badge]
+    P -->|No| B[Tier 1: Fast Heuristics & Real Bytes]
     B -->|Magic Numbers + User Profile Rules| Z{Confidence >= 80%?}
     Z -->|Yes| R1[Instant Match 0ms]
-    Z -->|No| C[Tier 2: Content Text Extraction & Embeddings]
-    C -->|Vector Semantic Similarity| Y{Confidence >= 70%?}
+    Z -->|No| C[Tier 2: Text Extraction & 256D Embeddings]
+    C -->|Vector Similarity 32 Topical Anchors| Y{Confidence >= 70%?}
     Y -->|Yes| R2[Semantic Match ~5ms]
     Y -->|No| D[Tier 3: Local SLM/LLM Reasoning]
     D -->|Local GBNF/JSON Inference| R3[Deep Reasoning Classification]
+    R1 --> SUB[Subcategories Engine: Games / Companies / Subjects]
+    R2 --> SUB
+    R3 --> SUB
 ```
 
 1. **Tier 1 — Fast Heuristics and Magic Numbers (`0ms`)**:
    - Real MIME-type detection using file signatures via `infer`.
    - Matching against the local database of user-defined rules and historical corrections (`profile.db`).
-2. **Tier 2 — Text Extraction & Vector Similarity (`~5ms`)**:
+   - Direct resolution for media formats (audio, video, images) and installers.
+2. **Tier 2 — Text Extraction & 256D Vector Similarity (`~5ms`)**:
    - Extraction of representative text from documents (`pdf-extract`, `docx-rs`, `calamine`).
-   - Semantic similarity calculation using normalized local embeddings for clustering related content.
+   - Strict binary header noise rejection against PE/PNG byte remnants.
+   - Semantic similarity calculation using 256-dimensional embeddings with 32 bilingual topical anchors and stable centroid clustering.
 3. **Tier 3 — Deep Reasoning with Local SLM**:
-   - Engaged for highly ambiguous or unstructured files, executing locally on CPU with zero internet reliance.
+   - Semantic category naming synthesis with noise filters and clean fallback to *"Miscellaneous Documents"*.
+4. **Hierarchical Subcategories Engine**:
+   - Automatically groups related files inside the same primary category into multi-level subdirectories (`Images/Games/Zelda`, `Bills & Invoices/Enel`).
 
 ---
 
@@ -106,16 +119,18 @@ graph TD
     end
 
     subgraph IPC [Tauri 2 IPC Bridge]
-        CMD_SCAN[scan_folder]
-        CMD_CLASS[classify_files]
-        CMD_APPLY[apply_organization]
-        CMD_PROF[get_profile / update_rule]
+        CMD_SCAN[scan_folder / scan_specific_files]
+        CMD_CLASS[classify_scanned_files]
+        CMD_APPLY[apply_organization / undo_last_apply]
+        CMD_RENAME[suggest_semantic_names / apply_renames]
+        CMD_PROF[get_profile / update_rule / clean_categories]
     end
 
     subgraph Backend [Native Rust Backend]
         SCANNER[walkdir + rayon Scanner]
         EXTRACT[Content Extractors PDF/DOCX/XLSX]
-        ENGINE[Semantic Classifier Engine]
+        ENGINE[Semantic Classifier & Subcategories Engine]
+        RENAMER[Smart Renamer Engine]
         MOVER[Safe File Operations & Undo Log]
         DB[(Local SQLite profile.db)]
     end
@@ -125,6 +140,7 @@ graph TD
     IPC --> SCANNER
     SCANNER --> EXTRACT
     EXTRACT --> ENGINE
+    ENGINE --> RENAMER
     ENGINE --> DB
     ENGINE --> IPC
     IPC --> TREE
@@ -148,6 +164,7 @@ Indexo/
 ├── README_EN.md                    # Project overview and user guide (English)
 ├── LICENSE                         # GNU General Public License v3.0
 ├── .gitignore                      # Git exclusion rules
+├── Indexo.exe                      # Standalone compiled portable executable
 │
 ├── src/                            # Svelte 5 + TypeScript Frontend
 │   ├── main.ts                     # Svelte application initialization
@@ -156,26 +173,28 @@ Indexo/
 │   ├── lib/                        # Shared libraries and visual modules
 │   │   ├── api.ts                  # Typed client wrappers for Tauri backend commands
 │   │   ├── stores.ts               # Global reactive state management (Svelte stores)
-│   │   ├── FileTreeNode.svelte     # Visual directory tree component
+│   │   ├── FileTreeNode.svelte     # Visual directory tree with nested subfolders and SVG badges
 │   │   └── i18n/                   # Translation dictionaries
 │   │       ├── pt-BR.json          # Brazilian Portuguese
 │   │       └── en-US.json          # American English
 │   │
 │   ├── routes/                     # Screen views and application flows
-│   │   ├── FolderSelect.svelte     # Landing view with folder selection & drag-and-drop
-│   │   ├── Scanning.svelte         # Directory scan and extraction progress view
-│   │   ├── Preview.svelte          # Main side-by-side (Before vs. After) preview tree
-│   │   ├── Settings.svelte         # Settings panel (theme, language, thresholds)
-│   │   └── TagManager.svelte       # Tag, category, and learned rule management
+│   │   ├── FolderSelect.svelte     # Landing view with folder/files selection & drag-and-drop
+│   │   ├── Scanning.svelte         # Directory scan and content extraction progress view
+│   │   ├── Preview.svelte          # Side-by-side (Before vs. After) multi-level preview tree
+│   │   ├── Renamer.svelte          # Batch smart renamer with semantic presets
+│   │   ├── TagManager.svelte       # Tag and learned rule management
+│   │   ├── CategoryManager.svelte  # Category management and purge maintenance view
+│   │   └── Settings.svelte         # Settings panel (theme, language, thresholds)
 │   │
 │   ├── i18n/                       # Internationalization setup (svelte-i18n)
 │   │   └── setup.ts                # Locale detection and dictionary loader
 │   │
 │   └── styles/                     # Global styling
-│       └── theme.css               # Design system, color tokens, and theme styles
+│       └── theme.css               # Design system, color tokens, and dark/light themes
 │
 ├── src-tauri/                      # Native Rust Backend (Tauri 2)
-│   ├── Cargo.toml                  # Rust dependencies (tauri, tokio, rusqlite, rayon, sha2)
+│   ├── Cargo.toml                  # Rust dependencies (tauri, tokio, rusqlite, rayon, infer)
 │   ├── Cargo.lock                  # Rust dependency lockfile
 │   ├── build.rs                    # Tauri build hook script
 │   ├── tauri.conf.json             # Tauri 2 runtime and window configuration
@@ -183,51 +202,56 @@ Indexo/
 │   ├── src/                        # Rust source code
 │   │   ├── main.rs                 # Executable entrypoint and command registry
 │   │   │
-│   │   ├── commands/               # Handlers de comandos invocados pelo frontend
-│   │   │   ├── mod.rs              # Exportação dos módulos de comandos
-│   │   │   ├── scan.rs             # Comando de varredura recursiva de diretórios
-│   │   │   ├── classify.rs         # Comando de classificação semântica em lote
-│   │   │   ├── apply.rs            # Comando de movimentação de arquivos e geração de log
-│   │   │   └── profile.rs          # Comando de consulta e persistência de perfil
+│   │   ├── commands/               # Handlers for frontend IPC invocations
+│   │   │   ├── mod.rs              # Command module exports
+│   │   │   ├── scan.rs             # Recursive directory and specific files scanner
+│   │   │   ├── classify.rs         # Batch semantic classifier and tier routing
+│   │   │   ├── apply.rs            # Atomic file mover and undo rollback log
+│   │   │   ├── rename.rs           # Batch semantic rename suggestions and execution
+│   │   │   ├── profile.rs          # Category/rule management and DB cleanup commands
+│   │   │   └── system.rs           # Windows File Explorer path integration
 │   │   │
-│   │   ├── engine/                 # Núcleo do motor de inteligência e classificação
-│   │   │   ├── mod.rs              # Orquestrador do pipeline de classificação
-│   │   │   ├── heuristics.rs       # Camada 1: Heurísticas, extensões e magic numbers
-│   │   │   ├── content_extract.rs  # Extração de texto de PDF, DOCX, XLSX e texto puro
-│   │   │   ├── embeddings.rs       # Camada 2: Embeddings vetoriais e similaridade de cosseno
-│   │   │   ├── llm_local.rs        # Camada 3: Inferência local com SLMs/LLMs
-│   │   │   └── rules.rs            # Avaliador e sintetizador dinâmico de regras
+│   │   ├── engine/                 # Intelligence & classification engine core
+│   │   │   ├── mod.rs              # Pipeline orchestrator and unit tests
+│   │   │   ├── heuristics.rs       # Tier 1: Fast heuristics and organized folder detection
+│   │   │   ├── content_extract.rs  # Secure text extraction from PDF, DOCX, XLSX, and text
+│   │   │   ├── embeddings.rs       # Tier 2: 256D embeddings with 32 anchors and centroid clustering
+│   │   │   ├── subcategories.rs    # Hierarchical subcategories engine (games, companies, subjects)
+│   │   │   ├── llm_local.rs        # Tier 3: Semantic naming and binary noise filtering
+│   │   │   ├── renamer.rs          # Smart renamer engine and collision resolver
+│   │   │   └── rules.rs            # Dynamic rule synthesizer and evaluator
 │   │   │
-│   │   ├── fs_ops/                 # Operações no sistema de arquivos e segurança
-│   │   │   ├── mod.rs              # Tratamento de caminhos e prevenção anti-traversal
-│   │   │   └── mover.rs            # Movimentação atômica, resolução de colisão e rollback
+│   │   ├── fs_ops/                 # Safe filesystem operations
+│   │   │   ├── mod.rs              # Path validation and traversal prevention
+│   │   │   └── mover.rs            # Atomic safe move, collision handling, and rollback
 │   │   │
-│   │   └── db/                     # Camada de banco de dados SQLite local
-│   │       ├── mod.rs              # Conexão e transações com data/profile.db
-│   │       ├── models.rs           # Estruturas de dados (Tag, Category, Rule, ActionLog)
-│   │       └── schema.sql          # Esquema relacional inicial com tabelas e índices
+│   │   └── db/                     # Local SQLite database layer
+│   │       ├── mod.rs              # Connections, maintenance queries, and transactions in profile.db
+│   │       ├── models.rs           # Data structures (Category, Rule, ActionLog, Session)
+│   │       └── schema.sql          # Relational database schema with indices
 │   │
-│   ├── capabilities/               # Políticas de segurança e permissões do Tauri 2
-│   │   └── default.json            # Permissões de diálogo, sistema de arquivos e IPC
+│   ├── capabilities/               # Security policies and permissions
+│   │   └── default.json            # Dialog, filesystem, and IPC capability grants
 │   │
-│   └── icons/                      # Ícones da aplicação em múltiplos formatos
-│       ├── icon.ico                # Ícone do executável Windows
-│       ├── icon.png                # Ícone padrão em alta resolução
-│       └── ...                     # Ícones para resoluções variadas
+│   └── icons/                      # Application icons in multiple resolutions
+│       ├── icon.ico                # Windows executable icon
+│       ├── icon.png                # High-resolution standard icon
+│       └── ...                     # Multi-resolution icon assets
 │
-└── data/                           # Diretório de persistência local (criado em runtime)
-    └── profile.db                  # Banco SQLite do perfil de aprendizado do usuário
+└── data/                           # Local persistence directory (runtime created)
+    └── profile.db                  # Local SQLite user learning profile
 ```
 
 ---
 
 ## User Experience Flow (UI/UX)
 
-1. **Folder Selection**: Open the app and select or drag-and-drop any target folder.
-2. **Scanning & Extraction**: The native Rust engine scans directories in parallel, identifying *magic numbers* and extracting text in milliseconds.
-3. **Interactive Side-by-Side Preview**: Inspect the proposed **Before vs. After** reorganization tree. Expand folders, adjust destinations, or customize rules via right-click actions.
-4. **Safe Execution**: Click **Apply** to atomically organize files into clean categories, generating a transactional rollback log.
-5. **1-Click Undo**: Revert the entire reorganization session at any time with the **Undo** button.
+1. **Folder or File Selection**: Open the app and select or drag-and-drop folders or specific files.
+2. **Scanning & Extraction**: The native Rust engine scans directories in parallel, identifying *magic numbers* and extracting text in milliseconds with real-time feedback.
+3. **Interactive Multi-Level Preview**: Inspect the proposed **Before vs. After** reorganization tree with deep hierarchical subcategories and preserved folders.
+4. **Integrated Semantic Renaming**: With a single toggle, inspect and standardize file names with dates, categories, and subjects.
+5. **Safe Execution**: Click **Apply** to atomically organize files into clean categories with full transactional rollback logging.
+6. **1-Click Undo**: Revert the entire reorganization session at any time with the **Undo** button.
 
 ---
 

@@ -59,10 +59,14 @@ Diferente de organizadores tradicionais baseados em extensões fixas ou regras m
 ## Principais Destaques
 
 * **Zero-Hardcode & Categorização Dinâmica**: O aplicativo não impõe regras engessadas de fábrica. As categorias e tags são sintetizadas em tempo real a partir dos arquivos reais do usuário.
+* **Subcategorias Inteligentes e Hierárquicas**: Quando 2 ou mais arquivos da mesma categoria compartilham uma entidade (jogos como *Zelda*, *Minecraft*; empresas como *Enel*, *Nubank*; ou assuntos como *Praia*, *Projetos*), o Indexo cria automaticamente subpastas profundas (ex: `Fotos e Imagens/Jogos/Zelda` ou `Boletos e Faturas/Enel`).
+* **Detecção e Preservação de Pastas Já Organizadas**: Subpastas que já possuem estrutura coerente (como `Fotos de Férias/Praia/`) são identificadas automaticamente, preservadas por padrão com indicador visual SVG no preview e opções rápidas de manter ou reorganizar.
+* **Renomeador Inteligente em Lote**: Padroniza e higieniza nomes de arquivos em lote, removendo ruídos de câmeras/apps (`IMG_`, `WA_`, `Scan_`), extraindo datas formatadas, herdando assuntos de subcategorias e preservando sequenciais numéricos (`_01`, `_02`).
 * **Inspeção Real de Conteúdo**: Não confia cegamente em extensões declaradas. Detecta o formato real pelos bytes de cabeçalho (*magic numbers*) e extrai texto de PDFs, DOCX, XLSX, TXT, MD e CSV.
 * **Pré-visualização Lado a Lado (Antes x Depois)**: Comparação visual clara entre a estrutura original e a proposta de destino antes de qualquer operação no disco.
 * **Aprendizado Incremental por Correção Manual**: Permite corrigir classificações com o botão direito (alterar categoria, criar nova tag, criar regra permanente). Cada correção alimenta o banco SQLite local (`data/profile.db`), aprimorando classificações futuras.
-* **Reversão Completa de Sessão (Undo)**: Trilha de auditoria transacional para reverter qualquer organização com restauração precisa.
+* **Gerenciador de Tags e Categorias**: Interface dedicada para criar, renomear, mesclar, auditar e expurgar tags/categorias automáticas ou não utilizadas com otimização `VACUUM`.
+* **Reversão Completa de Sessão (Undo)**: Trilha de auditoria transacional para reverter qualquer organização ou renomeação com restauração precisa em 1 clique.
 * **100% Portátil (.exe Standalone)**: Roda diretamente sem instalador, sem tocar no `%APPDATA%` ou no Registro do Windows. Copiar a pasta do executável copia todo o perfil de aprendizado.
 
 ---
@@ -73,24 +77,33 @@ O pipeline de classificação do Indexo avalia cada arquivo em três camadas hie
 
 ```mermaid
 graph TD
-    A[Arquivo Selecionado] --> B[Camada 1: Heurísticas & Bytes Reais]
+    A[Arquivo Selecionado] --> P{Já está em pasta organizada?}
+    P -->|Sim| PRESERV[Preserva Estrutura Original com Badge de Revisão]
+    P -->|Não| B[Camada 1: Heurísticas & Bytes Reais]
     B -->|Magic Numbers + Regras do Perfil| Z{Confiança >= 80%?}
     Z -->|Sim| R1[Classificação Rápida 0ms]
-    Z -->|Não| C[Camada 2: Extração de Texto & Embeddings]
-    C -->|Similaridade Vetorial de Conteúdo| Y{Confiança >= 70%?}
+    Z -->|Não| C[Camada 2: Extração de Texto & Embeddings 256D]
+    C -->|Similaridade Vetorial 32 Âncoras Temáticas| Y{Confiança >= 70%?}
     Y -->|Sim| R2[Classificação Semântica ~5ms]
     Y -->|Não| D[Camada 3: SLM/LLM Local Raciocínio]
     D -->|Inferência Local GBNF/JSON| R3[Classificação Profunda Local]
+    R1 --> SUB[Motor de Subcategorias: Jogos / Empresas / Assuntos]
+    R2 --> SUB
+    R3 --> SUB
 ```
 
 1. **Camada 1 — Heurísticas e Assinaturas Reais de Bytes (`0ms`)**:
    - Detecção do MIME-type real através de *magic numbers* via `infer`.
    - Consulta ao banco local de regras personalizadas e histórico de correções do usuário (`profile.db`).
-2. **Camada 2 — Extração Textual & Similaridade Vetorial (`~5ms`)**:
-   - Extração de texto representativo de documentos (`pdf-extract`, `docx-rs`, `calamine`).
-   - Cálculo de similaridade semântica por embeddings vetoriais locais para agrupamento por proximidade de conteúdo.
+   - Resolução direta de mídias (áudio, vídeo, imagens conhecidas) e instaladores.
+2. **Camada 2 — Extração Textual & Similaridade Vetorial 256D (`~5ms`)**:
+   - Extração de texto de documentos (`pdf-extract`, `docx-rs`, `calamine`).
+   - Proteção estrita anti-binário contra ruídos de cabeçalhos PE/PNG.
+   - Cálculo de similaridade semântica por embeddings vetoriais de 256 dimensões com 32 âncoras temáticas bilíngues e clusterização estável por centróides.
 3. **Camada 3 — Raciocínio Profundo com SLM Local**:
-   - Ativado para arquivos altamente ambíguos ou não estruturados, processando o contexto localmente sem dependência de internet.
+   - Síntese semântica de nomes de categorias com filtro de ruídos e fallback refinado para *"Documentos Diversos"*.
+4. **Motor de Subcategorias Hierárquicas**:
+   - Agrupa arquivos afins dentro da mesma categoria principal em subpastas multiníveis (`Fotos e Imagens/Jogos/Zelda`, `Boletos e Faturas/Enel`).
 
 ---
 
@@ -106,16 +119,18 @@ graph TD
     end
 
     subgraph IPC [Tauri 2 IPC Bridge]
-        CMD_SCAN[scan_folder]
-        CMD_CLASS[classify_files]
-        CMD_APPLY[apply_organization]
-        CMD_PROF[get_profile / update_rule]
+        CMD_SCAN[scan_folder / scan_specific_files]
+        CMD_CLASS[classify_scanned_files]
+        CMD_APPLY[apply_organization / undo_last_apply]
+        CMD_RENAME[suggest_semantic_names / apply_renames]
+        CMD_PROF[get_profile / update_rule / clean_categories]
     end
 
     subgraph Backend [Backend Rust Nativo]
         SCANNER[walkdir + rayon Scanner]
         EXTRACT[Content Extractors PDF/DOCX/XLSX]
-        ENGINE[Semantic Classifier Engine]
+        ENGINE[Semantic Classifier & Subcategories Engine]
+        RENAMER[Smart Renamer Engine]
         MOVER[Safe File Operations & Undo Log]
         DB[(SQLite Local profile.db)]
     end
@@ -125,6 +140,7 @@ graph TD
     IPC --> SCANNER
     SCANNER --> EXTRACT
     EXTRACT --> ENGINE
+    ENGINE --> RENAMER
     ENGINE --> DB
     ENGINE --> IPC
     IPC --> TREE
@@ -148,34 +164,37 @@ Indexo/
 ├── README_EN.md                    # Apresentação do projeto e guia do usuário (Inglês)
 ├── LICENSE                         # Licença GNU General Public License v3.0
 ├── .gitignore                      # Regras de exclusão do Git
+├── Indexo.exe                      # Executável portátil compilado standalone
 │
 ├── src/                            # Frontend em Svelte 5 + TypeScript
 │   ├── main.ts                     # Inicialização da aplicação Svelte
 │   ├── App.svelte                  # Componente raiz e orquestrador de navegação
 │   │
-│   ├── lib/                        # Módulos compartilhados e bibliotecas
+│   ├── lib/                        # Módulos compartilhados e componentes reativos
 │   │   ├── api.ts                  # Clientes e chamadas tipadas para comandos Tauri
 │   │   ├── stores.ts               # Gerenciamento de estado reativo global (Svelte stores)
-│   │   ├── FileTreeNode.svelte     # Componente da árvore visual de arquivos
+│   │   ├── FileTreeNode.svelte     # Árvore visual de arquivos com suporte a subpastas e badges SVG
 │   │   └── i18n/                   # Dicionários de internacionalização
 │   │       ├── pt-BR.json          # Português do Brasil
 │   │       └── en-US.json          # Inglês Americano
 │   │
 │   ├── routes/                     # Telas e fluxos da aplicação
-│   │   ├── FolderSelect.svelte     # Tela inicial com seleção e drag-and-drop de pastas
-│   │   ├── Scanning.svelte         # Tela de progresso de varredura e extração
-│   │   ├── Preview.svelte          # Tela principal de pré-visualização (Antes x Depois)
-│   │   ├── Settings.svelte         # Painel de configurações (tema, idioma, limites)
-│   │   └── TagManager.svelte       # Gerenciador de tags, regras e categorias aprendidas
+│   │   ├── FolderSelect.svelte     # Seleção e drag-and-drop de pastas ou arquivos
+│   │   ├── Scanning.svelte         # Progresso de varredura e extração de conteúdo
+│   │   ├── Preview.svelte          # Pré-visualização lado a lado (Antes x Depois) e menu de contexto
+│   │   ├── Renamer.svelte          # Renomeador inteligente em lote com presets semânticos
+│   │   ├── TagManager.svelte       # Gerenciador de tags e regras aprendidas
+│   │   ├── CategoryManager.svelte  # Gerenciador de categorias e ferramentas de expurgo
+│   │   └── Settings.svelte         # Painel de configurações (tema, idioma, limites)
 │   │
 │   ├── i18n/                       # Configuração de internacionalização (svelte-i18n)
 │   │   └── setup.ts                # Inicialização e detecção do idioma do sistema
 │   │
 │   └── styles/                     # Estilização global
-│       └── theme.css               # Design system, tokens de cores e modo escuro/claro
+│       └── theme.css               # Design system, tokens de cores e temas escuro/claro
 │
 ├── src-tauri/                      # Backend nativo em Rust (Tauri 2)
-│   ├── Cargo.toml                  # Manifesto de dependências Rust (tauri, tokio, rusqlite, rayon, sha2)
+│   ├── Cargo.toml                  # Manifesto de dependências Rust (tauri, tokio, rusqlite, rayon, infer)
 │   ├── Cargo.lock                  # Trava de dependências Rust
 │   ├── build.rs                    # Script de compilação Tauri
 │   ├── tauri.conf.json             # Configurações do runtime Tauri 2 e janelas
@@ -185,26 +204,30 @@ Indexo/
 │   │   │
 │   │   ├── commands/               # Handlers de comandos invocados pelo frontend
 │   │   │   ├── mod.rs              # Exportação dos módulos de comandos
-│   │   │   ├── scan.rs             # Comando de varredura recursiva de diretórios
-│   │   │   ├── classify.rs         # Comando de classificação semântica em lote
-│   │   │   ├── apply.rs            # Comando de movimentação de arquivos e geração de log
-│   │   │   └── profile.rs          # Comando de consulta e persistência de perfil
+│   │   │   ├── scan.rs             # Varredura recursiva de diretórios e arquivos específicos
+│   │   │   ├── classify.rs         # Classificação semântica em lote e roteamento de camadas
+│   │   │   ├── apply.rs            # Movimentação atômica e reversão transacional (Undo)
+│   │   │   ├── rename.rs           # Geração de sugestões e aplicação de renomeação em lote
+│   │   │   ├── profile.rs          # Gerenciamento de categorias, regras e limpeza do banco
+│   │   │   └── system.rs           # Abertura de caminhos no Explorador de Arquivos do Windows
 │   │   │
 │   │   ├── engine/                 # Núcleo do motor de inteligência e classificação
-│   │   │   ├── mod.rs              # Orquestrador do pipeline de classificação
-│   │   │   ├── heuristics.rs       # Camada 1: Heurísticas, extensões e magic numbers
-│   │   │   ├── content_extract.rs  # Extração de texto de PDF, DOCX, XLSX e texto puro
-│   │   │   ├── embeddings.rs       # Camada 2: Embeddings vetoriais e similaridade de cosseno
-│   │   │   ├── llm_local.rs        # Camada 3: Inferência local com SLMs/LLMs
-│   │   │   └── rules.rs            # Avaliador e sintetizador dinâmico de regras
+│   │   │   ├── mod.rs              # Orquestrador do pipeline de classificação e testes unitários
+│   │   │   ├── heuristics.rs       # Camada 1: Heurísticas, magic numbers e detecção de pastas organizadas
+│   │   │   ├── content_extract.rs  # Extração segura de texto de PDF, DOCX, XLSX e texto puro
+│   │   │   ├── embeddings.rs       # Camada 2: Embeddings 256D com 32 âncoras temáticas e centróides
+│   │   │   ├── subcategories.rs    # Motor de subcategorias hierárquicas por jogos, empresas e assuntos
+│   │   │   ├── llm_local.rs        # Camada 3: Nomenclatura semântica e filtro de ruídos binários
+│   │   │   ├── renamer.rs          # Motor do renomeador inteligente e resolução de colisões
+│   │   │   └── rules.rs            # Avaliador e sintetizador dinâmico de regras aprendidas
 │   │   │
-│   │   ├── fs_ops/                 # Operações no sistema de arquivos e segurança
+│   │   ├── fs_ops/                 # Operações seguras no sistema de arquivos
 │   │   │   ├── mod.rs              # Tratamento de caminhos e prevenção anti-traversal
-│   │   │   └── mover.rs            # Movimentação atômica, resolução de colisão e rollback
+│   │   │   └── mover.rs            # Movimentação segura, resolução de colisão e rollback
 │   │   │
 │   │   └── db/                     # Camada de banco de dados SQLite local
-│   │       ├── mod.rs              # Conexão e transações com data/profile.db
-│   │       ├── models.rs           # Estruturas de dados (Tag, Category, Rule, ActionLog)
+│   │       ├── mod.rs              # Conexão, queries, manutenção e transações em data/profile.db
+│   │       ├── models.rs           # Estruturas de dados (Category, Rule, ActionLog, Session)
 │   │       └── schema.sql          # Esquema relacional inicial com tabelas e índices
 │   │
 │   ├── capabilities/               # Políticas de segurança e permissões do Tauri 2
@@ -223,11 +246,12 @@ Indexo/
 
 ## Fluxo de Experiência do Usuário (UI/UX)
 
-1. **Seleção de Pasta**: O usuário abre o aplicativo e seleciona ou arrasta a pasta de origem.
-2. **Varredura e Extração**: O motor em Rust varre subpastas em paralelo, detecta *magic numbers* e extrai textos em milissegundos, com feedback de progresso na tela.
-3. **Pré-visualização Interativa**: A tela exibe a árvore **Antes x Depois**. O usuário pode inspecionar destinos, expandir pastas e ajustar classificações pelo menu de contexto.
-4. **Aplicação com Segurança**: Ao clicar em **Aplicar**, os arquivos são movidos atomicamente para a nova estrutura organizada, gerando a trilha de reversão.
-5. **Desfazer em 1 Clique**: A qualquer momento, o botão **Desfazer (Undo)** reverte a última sessão de movimentação de forma integral.
+1. **Seleção de Pasta ou Arquivos**: O usuário abre o aplicativo e seleciona pastas ou arquivos específicos via diálogo ou arrastar e soltar.
+2. **Varredura e Extração**: O motor em Rust varre diretórios em paralelo, detecta *magic numbers* e extrai textos em milissegundos, com feedback de progresso em tempo real.
+3. **Pré-visualização Interativa Multinível**: A tela exibe a árvore **Antes x Depois** com suporte a subcategorias hierárquicas profundas e identificação de pastas preservadas.
+4. **Renomeação Semântica Integrada**: Com um simples toggle, o usuário pode visualizar e padronizar nomes de arquivos com datas, categorias e assuntos.
+5. **Aplicação com Segurança Absoluta**: Ao clicar em **Aplicar**, os arquivos são movidos atomicamente para a nova estrutura organizada, gerando a trilha de auditoria para reversão.
+6. **Desfazer em 1 Clique**: A qualquer momento, o botão **Desfazer (Undo)** reverte a última sessão de organização de forma 100% fiel.
 
 ---
 
