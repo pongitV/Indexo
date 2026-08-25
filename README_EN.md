@@ -37,7 +37,7 @@
 - [User Experience Flow (UI/UX)](#user-experience-flow-uiux)
 - [Getting Started & Development](#getting-started--development)
 - [Building the Standalone Portable Executable](#building-the-standalone-portable-executable)
-- [Implementation Roadmap and Specification](#implementation-roadmap-and-specification)
+- [Development Roadmap](#development-roadmap)
 - [License](#license)
 
 ---
@@ -144,7 +144,6 @@ Indexo/
 ├── package-lock.json               # Node.js lockfile
 ├── tsconfig.json                   # TypeScript compiler configuration
 ├── vite.config.ts                  # Vite bundler and Svelte plugin configuration
-├── PLANO_IMPLEMENTACAO.md          # Technical specifications and development plan
 ├── README.md                       # Project overview and user guide (Portuguese)
 ├── README_EN.md                    # Project overview and user guide (English)
 ├── LICENSE                         # GNU General Public License v3.0
@@ -277,9 +276,7 @@ The self-contained standalone executable will be located at:
 
 ---
 
-## Implementation Roadmap and Specification
-
-Comprehensive technical specifications are documented in [PLANO_IMPLEMENTACAO.md](PLANO_IMPLEMENTACAO.md):
+## Development Roadmap
 
 * **Phase 0**: Stack Foundation (Rust + Tauri 2 + Svelte 5 + SQLite `profile.db`).
 * **Phase 1**: Content extraction and 3-tier semantic classification engine.

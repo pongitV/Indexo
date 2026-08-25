@@ -79,7 +79,7 @@ pub fn is_excluded_path(path: &Path) -> bool {
     false
 }
 
-/// Camada 1 do motor de classificacao (ver secao 7 do PLANO_IMPLEMENTACAO.md):
+/// Camada 1 do motor de classificacao:
 /// classificacao instantanea, sem ler o conteudo do arquivo.
 pub fn classify_by_heuristics(
     file: &FileMeta,

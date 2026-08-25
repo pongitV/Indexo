@@ -27,7 +27,7 @@ pub struct ClassifyProgressPayload {
     pub item: Option<ClassifiedFile>,
 }
 
-/// Roda o pipeline de 3 camadas descrito na secao 7 do PLANO_IMPLEMENTACAO.md
+/// Roda o pipeline de 3 camadas de classificação
 /// sobre os arquivos de uma sessao de varredura.
 #[tauri::command]
 pub async fn classify_scanned_files(

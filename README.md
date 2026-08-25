@@ -37,7 +37,7 @@
 - [Fluxo de Experiência do Usuário (UI/UX)](#fluxo-de-experiência-do-usuário-uiux)
 - [Como Executar e Desenvolver](#como-executar-e-desenvolver)
 - [Gerando o Executável Portátil Standalone](#gerando-o-executável-portátil-standalone)
-- [Roteiro e Especificação de Implementação](#roteiro-e-especificação-de-implementação)
+- [Roteiro de Desenvolvimento](#roteiro-de-desenvolvimento)
 - [Licença](#licença)
 
 ---
@@ -144,7 +144,6 @@ Indexo/
 ├── package-lock.json               # Trava de dependências Node.js
 ├── tsconfig.json                   # Configuração do compilador TypeScript
 ├── vite.config.ts                  # Configuração do Vite e plugin Svelte
-├── PLANO_IMPLEMENTACAO.md          # Especificação técnica completa e plano de desenvolvimento
 ├── README.md                       # Apresentação do projeto e guia do usuário (Português)
 ├── README_EN.md                    # Apresentação do projeto e guia do usuário (Inglês)
 ├── LICENSE                         # Licença GNU General Public License v3.0
@@ -277,9 +276,7 @@ O binário portátil standalone será gerado em:
 
 ---
 
-## Roteiro e Especificação de Implementação
-
-O projeto conta com uma especificação técnica minuciosa detalhada no arquivo [PLANO_IMPLEMENTACAO.md](PLANO_IMPLEMENTACAO.md):
+## Roteiro de Desenvolvimento
 
 * **Fase 0**: Fundação da stack (Rust + Tauri 2 + Svelte 5 + SQLite `profile.db`).
 * **Fase 1**: Extração de conteúdo e motor heurístico de classificação semântica.
