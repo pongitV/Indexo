@@ -19,7 +19,7 @@
   "classify.title": "Classificação Semântica em Andamento",
   "classify.progress": "Identificando padrões e agrupando semanticamente...",
   "classify.phase.heuristics": "Fase 1: Aplicando regras aprendidas e heurísticas...",
-  "classify.phase.extracting": "Fase 2: Extraindo amostras de documentos ambíguos...",
+  "classify.phase.extracting": "Fase 2: Extração de conteúdo e OCR de imagens/documentos...",
   "classify.phase.clustering": "Fase 3: Agrupando por similaridade semântica...",
   "classify.phase.done": "Classificação concluída!",
   "preview.title": "Pré-visualização da Organização",

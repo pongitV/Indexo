@@ -19,7 +19,7 @@
   "classify.title": "Semantic Classification in Progress",
   "classify.progress": "Identifying patterns and semantic grouping...",
   "classify.phase.heuristics": "Phase 1: Applying learned rules and heuristics...",
-  "classify.phase.extracting": "Phase 2: Extracting samples from ambiguous files...",
+  "classify.phase.extracting": "Phase 2: Content extraction and OCR of images/documents...",
   "classify.phase.clustering": "Phase 3: Grouping by semantic similarity...",
   "classify.phase.done": "Classification completed!",
   "preview.title": "Organization Preview",

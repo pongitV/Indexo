@@ -2,6 +2,7 @@ pub mod heuristics;
 pub mod content_extract;
 pub mod embeddings;
 pub mod llm_local;
+pub mod ocr;
 pub mod rules;
 pub mod renamer;
 pub mod subcategories;
@@ -12,6 +13,19 @@ mod tests {
     use std::path::Path;
     use crate::commands::scan::FileMeta;
     use crate::db::models::ClassificationRule;
+
+    #[test]
+    fn test_ocr_supported_extensions() {
+        assert!(ocr::is_ocr_supported_extension("png"));
+        assert!(ocr::is_ocr_supported_extension("jpg"));
+        assert!(ocr::is_ocr_supported_extension("JPEG"));
+        assert!(ocr::is_ocr_supported_extension("webp"));
+        assert!(ocr::is_ocr_supported_extension("bmp"));
+        assert!(ocr::is_ocr_supported_extension("tiff"));
+        assert!(!ocr::is_ocr_supported_extension("exe"));
+        assert!(!ocr::is_ocr_supported_extension("docx"));
+        assert!(!ocr::is_ocr_supported_extension("pdf"));
+    }
 
     #[test]
     fn test_excluded_paths() {

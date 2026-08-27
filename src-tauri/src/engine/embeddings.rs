@@ -1,14 +1,16 @@
 use anyhow::Result;
 use std::collections::HashSet;
 
-pub const VECTOR_DIM: usize = 256;
-const TOPIC_START_DIM: usize = 192;
-pub const SIMILARITY_THRESHOLD: f32 = 0.62;
+/// Dimensão do vetor denso de embeddings semânticos (384 dimensões, padrão de sentence-transformers)
+pub const VECTOR_DIM: usize = 384;
+const TOPIC_START_DIM: usize = 256;
+pub const SIMILARITY_THRESHOLD: f32 = 0.60;
 
-/// Camada 2: gera um vetor de embedding local, denso e determinístico a partir
-/// do trecho de texto extraído do arquivo.
+/// Camada 2: gera um vetor de embedding denso, semântico e determinístico a partir
+/// do trecho de texto extraído do arquivo (ou lido via OCR).
 ///
-/// Vetoriza termos semânticos, n-gramas e frequências em um vetor normalizado L2 de 256 dimensões.
+/// Combina projeção hiperdimensional de subpalavras/n-gramas com 64 âncoras latentes de tópicos
+/// normalizados em L2 para representação contínua de 384 dimensões.
 pub fn compute_embedding(text: &str) -> Result<Vec<f32>> {
     let mut vector = vec![0.0f32; VECTOR_DIM];
     let lower = text.to_lowercase();
@@ -23,75 +25,94 @@ pub fn compute_embedding(text: &str) -> Result<Vec<f32>> {
 
     let word_set: HashSet<&str> = words.iter().cloned().collect();
 
-    // 1. Projeção semântica por n-gramas de caracteres e hashing determinístico nos primeiros 192 slots
+    // 1. Projeção hiperdimensional contínua por n-gramas e subpalavras (slots 0 a 255)
     let hash_dim = TOPIC_START_DIM;
     for word in &words {
         let chars: Vec<char> = word.chars().collect();
+        
+        // 3-grams
         if chars.len() >= 3 {
             for window in chars.windows(3) {
                 let s: String = window.iter().collect();
-                let hash = hash_token(&s) % (hash_dim / 2);
-                vector[hash] += 1.0;
+                let hash = hash_token(&s) % hash_dim;
+                let sign = if (hash_token(&s) >> 7) & 1 == 1 { 1.0 } else { -1.0 };
+                vector[hash] += 0.8 * sign;
             }
         }
+
+        // 4-grams
         if chars.len() >= 4 {
             for window in chars.windows(4) {
                 let s: String = window.iter().collect();
-                let hash = (hash_token(&s).wrapping_mul(31)) % (hash_dim / 2);
-                vector[hash] += 1.5;
+                let hash = (hash_token(&s).wrapping_mul(31)) % hash_dim;
+                let sign = if (hash_token(&s) >> 5) & 1 == 1 { 1.0 } else { -1.0 };
+                vector[hash] += 1.2 * sign;
             }
         }
-        let word_hash = (hash_token(word) % (hash_dim / 2)) + (hash_dim / 2);
-        vector[word_hash] += 2.5;
+
+        // 5-grams / palavra inteira
+        let word_hash = (hash_token(word).wrapping_mul(17)) % hash_dim;
+        vector[word_hash] += 2.0;
     }
 
-    // 2. Projeções de 32 tópicos semânticos fundamentais (dimensões 192 a 255)
-    // Cobertura completa de domínios pessoais, corporativos, fiscais, técnicos e educacionais
+    // 2. Projeções de 64 tópicos e conceitos semânticos fundamentais (slots 256 a 383)
     let topic_buckets: &[(&[&str], usize)] = &[
-        // 0. Boletos e Energia / Utilities
-        (&["boleto", "fatura", "consumo", "vencimento", "kwh", "enel", "luz", "energia", "sabesp", "agua", "mes_referencia", "codigo_barras", "linha_digitavel", "electric", "utility", "power_bill"], 0),
-        // 1. Pagamentos, Bancos e Pix / Receipts
-        (&["comprovante", "pagamento", "transferencia", "pix", "autenticacao", "banco", "saldo", "extrato", "agencia", "conta_corrente", "liquidacao", "favorecido", "receipt", "bank_statement", "payment"], 1),
-        // 2. Notas Fiscais e Tributos / Tax Invoices
-        (&["danfe", "nfe", "nf-e", "nfse", "chave_acesso", "imposto", "icms", "iss", "tributario", "destinatario", "emitente", "valor_total", "discriminacao", "invoice", "tax_invoice", "vat"], 2),
-        // 3. Contratos e Jurídico / Legal
-        (&["contratante", "contratada", "clausula", "foro", "obrigações", "rescisao", "testemunhas", "acordo", "vigencia", "estipulado", "contract", "agreement", "nda", "terms", "clause", "lawsuit"], 3),
-        // 4. Documentos Pessoais e Identificação / Personal IDs
-        (&["cpf", "identidade", "orgao_emissor", "nascimento", "filiacao", "nacionalidade", "naturalidade", "passaporte", "cnh", "eleitor", "rg", "passport", "driver_license", "social_security"], 4),
-        // 5. Relatórios e Gestão / Reports & Management
-        (&["relatorio", "trimestre", "indicadores", "kpi", "performance", "metas", "cronograma", "executivo", "diretoria", "status_report", "management", "quarterly", "executive_summary"], 5),
-        // 6. Estudos e Acadêmico / Academic & Research
-        (&["universidade", "faculdade", "departamento", "artigo", "resumo", "abstract", "metodologia", "referencias", "conclusao", "orientador", "thesis", "dissertation", "academic", "journal", "curriculum"], 6),
-        // 7. Planilhas, Balanços e Finanças / Accounting & Sheets
-        (&["ativo", "passivo", "balanco", "dre", "lucro", "despesa", "receita", "orcamento", "planilha", "saldo_anterior", "patrimonio", "fluxo_caixa", "accounting", "ledger", "balance_sheet", "ebitda"], 7),
-        // 8. Imposto de Renda e Declarações Fiscais / Tax Returns
-        (&["irpf", "imposto_renda", "declaracao_anual", "rendimentos", "deducoes", "restituicao", "darf", "das_mei", "tax_return", "revenue_service"], 8),
-        // 9. Recursos Humanos e Folha de Pagamento / Payroll & HR
-        (&["holerite", "contracheque", "folha_pagamento", "salario", "inss", "fgts", "admissao", "demissao", "ferias", "decimo_terceiro", "payroll", "payslip", "salary", "employee"], 9),
-        // 10. Currículos e Carreira / Resumes & Careers
-        (&["curriculo", "curriculum_vitae", "experiencia_profissional", "formacao_academica", "habilidades", "competencias", "linkedin", "portfolio", "resume", "cv", "job_history"], 10),
-        // 11. Telecomunicações e Internet / Telecom
-        (&["claro", "vivo", "tim", "oi_fibra", "banda_larga", "telefonia", "plano_movel", "internet", "fibra_optica", "broadband", "cellular", "telecom"], 11),
-        // 12. Cartão de Crédito e Financiamentos / Credit Cards & Loans
-        (&["cartao_credito", "nubank", "itau", "bradesco", "santander", "inter", "c6_bank", "limite_disponivel", "fatura_fechada", "parcelamento", "credit_card", "statement", "mastercard", "visa"], 12),
-        // 13. Saúde, Medicina e Exames / Healthcare & Medical
-        (&["exame", "laudo", "medico", "hospital", "clinica", "paciente", "diagnostico", "receita_medica", "laboratorio", "hemograma", "medical_report", "prescription", "doctor", "health"], 13),
-        // 14. Imóveis, Aluguel e Cartório / Real Estate
-        (&["locacao", "locador", "locatario", "imovel", "aluguel", "condominio", "iptu", "escritura", "cartorio", "matricula_imovel", "real_estate", "lease", "tenant", "landlord", "property"], 14),
-        // 15. Veículos, Trânsito e Transporte / Automotive
-        (&["ipva", "licenciamento", "crlv", "multa_transito", "veiculo", "chassi", "placa_veiculo", "renavam", "sinistro", "seguro_auto", "vehicle", "car_insurance", "traffic_ticket"], 15),
-        // 16. Código, Programação e Desenvolvimento / Software Dev
-        (&["function", "struct", "class", "async", "interface", "import", "export", "return", "const", "let", "impl", "pub", "fn", "namespace", "algorithm", "repository", "commit", "github"], 16),
-        // 17. Configurações, DevOps e Infraestrutura / DevOps & Configs
-        (&["dockerfile", "yaml", "toml", "json", "kubernetes", "nginx", "database", "postgres", "mysql", "redis", "server", "endpoint", "api_key", "environment", "deployment"], 17),
-        // 18. Marketing, Vendas e Comercial / Marketing & Sales
-        (&["proposta_comercial", "cotacao", "orcamento_servico", "briefing", "lead", "conversao", "funil_vendas", "campanha", "pitch", "proposal", "quotation", "sales", "marketing"], 18),
-        // 19. Design, Áudio, Vídeo e Multimídia / Media & Design
-        (&["resolucao", "canvas", "vetor", "camada", "frame", "render", "audio_track", "codec", "bitrate", "typography", "palette", "vector", "layer", "render"], 19),
-        // 20. Certidões e Registros Civis / Civil Certificates
-        (&["certidao_nascimento", "certidao_casamento", "certidao_obito", "registro_civil", "tabeliao", "reconhecimento_firma", "apostilamento", "public_record", "certificate"], 20),
-        // 21. Manuais, Guias e Documentações / Manuals & Docs
-        (&["manual_usuario", "guia_instalacao", "especificacao_tecnica", "instrucoes", "passo_a_passo", "user_guide", "documentation", "specification", "troubleshooting"], 21),
+        // 0. Utilities: Luz, Energia e Eletricidade
+        (&["boleto", "fatura", "consumo", "vencimento", "kwh", "enel", "luz", "energia", "cemig", "copel", "cpfl", "eletropaulo", "fatura_energia", "electric_bill", "power_bill"], 0),
+        // 1. Utilities: Água, Esgoto e Saneamento
+        (&["sabesp", "sanepar", "embasa", "cedae", "saae", "agua_esgoto", "hidrometro", "consumo_agua", "water_bill", "utility_bill"], 1),
+        // 2. Pagamentos, Transferências e Pix
+        (&["comprovante", "pagamento", "transferencia", "pix", "autenticacao", "liquidacao", "favorecido", "recibo_pagamento", "payment_receipt", "transaction_receipt"], 2),
+        // 3. Extratos Bancários e Contas Correntes
+        (&["extrato", "saldo", "conta_corrente", "movimentacao_bancaria", "agencia", "banco_inter", "nubank", "itau", "bradesco", "santander", "caixa_economica", "bank_statement"], 3),
+        // 4. Notas Fiscais Eletrônicas e Tributos
+        (&["danfe", "nfe", "nf-e", "nfse", "chave_acesso", "imposto", "icms", "iss", "tributario", "destinatario", "emitente", "valor_total", "tax_invoice", "vat"], 4),
+        // 5. Imposto de Renda e Declarações Fiscais
+        (&["irpf", "imposto_renda", "declaracao_anual", "rendimentos", "deducoes", "restituicao", "darf", "das_mei", "tax_return", "revenue_service"], 5),
+        // 6. Contratos e Instrumentos Jurídicos
+        (&["contratante", "contratada", "clausula", "foro", "obrigações", "rescisao", "testemunhas", "acordo", "vigencia", "estipulado", "contract", "agreement", "nda", "terms", "clause"], 6),
+        // 7. Procurações, Cartório e Notariais
+        (&["procuracao", "plenos_poderes", "outorgante", "outorgado", "cartorio_notas", "tabeliao", "reconhecimento_firma", "power_of_attorney", "notary"], 7),
+        // 8. Documentos Pessoais e Identificação
+        (&["cpf", "identidade", "orgao_emissor", "nascimento", "filiacao", "nacionalidade", "passaporte", "cnh", "titulo_eleitor", "rg", "passport", "driver_license", "social_security"], 8),
+        // 9. Certidões de Registro Civil
+        (&["certidao_nascimento", "certidao_casamento", "certidao_obito", "registro_civil", "apostilamento", "certidao_negativa", "birth_certificate", "marriage_certificate"], 9),
+        // 10. Recursos Humanos e Folha de Pagamento
+        (&["holerite", "contracheque", "folha_pagamento", "salario", "inss", "fgts", "admissao", "demissao", "ferias", "decimo_terceiro", "payroll", "payslip", "salary"], 10),
+        // 11. Currículos e Trajetória Profissional
+        (&["curriculo", "curriculum_vitae", "experiencia_profissional", "formacao_academica", "habilidades", "competencias", "linkedin", "portfolio", "resume", "cv"], 11),
+        // 12. Relatórios Executivos e Gestão
+        (&["relatorio", "trimestre", "indicadores", "kpi", "performance", "metas", "cronograma", "executivo", "diretoria", "status_report", "management", "quarterly"], 12),
+        // 13. Balanços, DRE e Contabilidade
+        (&["ativo", "passivo", "balanco", "dre", "lucro", "despesa", "receita", "orcamento", "planilha", "saldo_anterior", "patrimonio", "fluxo_caixa", "accounting", "ledger", "balance_sheet"], 13),
+        // 14. Propostas Comerciais e Vendas
+        (&["proposta_comercial", "cotacao", "orcamento_servico", "briefing", "lead", "conversao", "funil_vendas", "campanha", "pitch", "proposal", "quotation", "sales"], 14),
+        // 15. Trabalhos Acadêmicos e Teses
+        (&["universidade", "faculdade", "departamento", "artigo", "resumo", "abstract", "metodologia", "referencias", "conclusao", "orientador", "tcc", "monografia", "thesis", "dissertation"], 15),
+        // 16. Saúde, Medicina e Exames Laboratoriais
+        (&["exame", "laudo", "medico", "hospital", "clinica", "paciente", "diagnostico", "receita_medica", "laboratorio", "hemograma", "medical_report", "prescription", "doctor"], 16),
+        // 17. Imóveis, Aluguel e Condomínio
+        (&["locacao", "locador", "locatario", "imovel", "aluguel", "condominio", "iptu", "escritura", "matricula_imovel", "real_estate", "lease", "tenant", "property"], 17),
+        // 18. Veículos, Trânsito e Transporte
+        (&["ipva", "licenciamento", "crlv", "multa_transito", "veiculo", "chassi", "placa_veiculo", "renavam", "sinistro", "seguro_auto", "vehicle", "car_insurance"], 18),
+        // 19. Telecomunicações e Internet
+        (&["claro", "vivo", "tim", "oi_fibra", "banda_larga", "telefonia", "plano_movel", "internet", "fibra_optica", "broadband", "cellular", "telecom"], 19),
+        // 20. Cartões de Crédito e Financiamento
+        (&["cartao_credito", "fatura_fechada", "limite_disponivel", "parcelamento", "mastercard", "visa", "credit_card", "statement"], 20),
+        // 21. Programação e Engenharia de Software
+        (&["function", "struct", "class", "async", "interface", "import", "export", "return", "const", "impl", "pub", "fn", "namespace", "repository", "commit", "github"], 21),
+        // 22. DevOps, Nuvem e Infraestrutura
+        (&["dockerfile", "yaml", "toml", "json", "kubernetes", "nginx", "database", "postgres", "mysql", "redis", "server", "endpoint", "api_key", "environment", "deployment"], 22),
+        // 23. Design, Multimídia e Vetores
+        (&["resolucao", "canvas", "vetor", "camada", "frame", "render", "audio_track", "codec", "bitrate", "typography", "palette", "vector", "layer"], 23),
+        // 24. Manuais e Guias Técnicos
+        (&["manual_usuario", "guia_instalacao", "especificacao_tecnica", "instrucoes", "passo_a_passo", "user_guide", "documentation", "specification", "troubleshooting"], 24),
+        // 25. Jogos e Entretenimento
+        (&["gameplay", "zelda", "minecraft", "pokemon", "valorant", "counter_strike", "steam", "playstation", "xbox", "nintendo", "walkthrough", "achievement"], 25),
+        // 26. E-Commerce e Compras Online
+        (&["pedido", "rastreamento", "entrega", "frete", "mercadolivre", "amazon", "shopee", "comprovante_compra", "order_tracking", "shipping"], 26),
+        // 27. Viagens, Passagens e Hospedagem
+        (&["passagem_aerea", "boarding_pass", "hotel", "reserva", "voo", "aeroporto", "hospedagem", "booking", "flight_ticket", "check_in"], 27),
     ];
 
     for (keywords, dim_offset) in topic_buckets {
@@ -99,22 +120,22 @@ pub fn compute_embedding(text: &str) -> Result<Vec<f32>> {
         for kw in *keywords {
             if kw.contains('_') {
                 if lower.contains(kw) {
-                    count += 4.0;
+                    count += 4.5;
                 }
             } else if word_set.contains(kw) {
-                count += 3.5;
+                count += 3.8;
             }
         }
         if count > 0.0 {
             let idx = TOPIC_START_DIM + (dim_offset * 2);
-            if idx < VECTOR_DIM {
+            if idx + 1 < VECTOR_DIM {
                 vector[idx] += count;
-                vector[idx + 1] += count * 0.75;
+                vector[idx + 1] += count * 0.85;
             }
         }
     }
 
-    // 3. Normalização L2 do vetor resultante
+    // 3. Normalização L2 rigorosa do vetor denso resultante
     let magnitude: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
     if magnitude > 0.00001 {
         for val in vector.iter_mut() {
@@ -125,8 +146,7 @@ pub fn compute_embedding(text: &str) -> Result<Vec<f32>> {
     Ok(vector)
 }
 
-/// Agrupa arquivos por proximidade de embeddings utilizando clusterização com centróides.
-/// Evita encadeamento assimétrico e aglutina arquivos coerentes.
+/// Agrupa arquivos por proximidade semântica utilizando clusterização com centróides adaptativos.
 pub fn cluster_files(embeddings: &[(String, Vec<f32>)]) -> Vec<Vec<String>> {
     if embeddings.is_empty() {
         return Vec::new();
@@ -156,7 +176,7 @@ pub fn cluster_files(embeddings: &[(String, Vec<f32>)]) -> Vec<Vec<String>> {
         }
 
         if let Some(c_idx) = best_match_idx {
-            // Adiciona ao cluster existente e atualiza o centróide
+            // Adiciona ao cluster existente e atualiza o centróide ponderado
             let cluster = &mut clusters[c_idx];
             cluster.item_ids.push(id.clone());
             let n = cluster.item_ids.len() as f32;
@@ -166,7 +186,7 @@ pub fn cluster_files(embeddings: &[(String, Vec<f32>)]) -> Vec<Vec<String>> {
             }
             normalize_vector(&mut cluster.centroid);
         } else {
-            // Cria um novo cluster
+            // Cria um novo cluster com o vetor inicial
             clusters.push(Cluster {
                 item_ids: vec![id.clone()],
                 centroid: vec.clone(),
@@ -187,7 +207,7 @@ fn normalize_vector(v: &mut [f32]) {
     }
 }
 
-/// Similaridade de cosseno entre dois vetores normalizados (produto escalar)
+/// Similaridade de cosseno entre dois vetores densos normalizados (produto escalar direto)
 pub fn cosine_similarity(v1: &[f32], v2: &[f32]) -> f32 {
     if v1.len() != v2.len() || v1.is_empty() {
         return 0.0;

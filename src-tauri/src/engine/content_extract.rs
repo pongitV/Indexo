@@ -3,12 +3,11 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-/// Extensões de arquivos conhecidamente binários que nunca devem ser lidos como texto plano
+/// Extensões de arquivos conhecidamente binários (executáveis, mídia pesada, arquivos compactados)
 const BINARY_EXTENSIONS: &[&str] = &[
     "exe", "dll", "sys", "so", "dylib", "bin", "iso", "img", "dat", "db", "sqlite",
     "sqlite3", "db3", "pak", "assets", "pdb", "o", "obj", "lib", "a", "class", "pyc",
-    "wasm", "node", "png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "ico", "raw",
-    "heic", "psd", "ai", "mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "mid", "midi",
+    "wasm", "node", "mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "mid", "midi",
     "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "3gp", "zip", "rar", "7z",
     "tar", "gz", "bz2", "xz", "tgz", "ttf", "otf", "woff", "woff2", "eot", "rsrc", "pdata",
     "rdata", "reloc", "vdi", "vmdk", "qcow2", "dmp", "elf",
@@ -26,15 +25,33 @@ pub fn extract_text_snippet(path: &Path, max_chars: usize) -> Result<String> {
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
 
+    // Se for imagem suportada, executa o reconhecimento óptico de caracteres (OCR)
+    if crate::engine::ocr::is_ocr_supported_extension(&ext) {
+        if let Ok(ocr_text) = crate::engine::ocr::extract_text_from_image(path, max_chars) {
+            if !ocr_text.trim().is_empty() {
+                return Ok(ocr_text);
+            }
+        }
+        return Ok(String::new());
+    }
+
     if BINARY_EXTENSIONS.contains(&ext.as_str()) {
         return Ok(String::new());
     }
 
-    // Se o infer detectar arquivo binario/imagem/audio/video/executavel/arquivo compactado
+    // Se o infer detectar imagem, tenta OCR antes de descartar
     if let Ok(Some(inferred)) = infer::get_from_path(path) {
         let mime = inferred.mime_type();
-        if mime.starts_with("image/")
-            || mime.starts_with("audio/")
+        if mime.starts_with("image/") {
+            if let Ok(ocr_text) = crate::engine::ocr::extract_text_from_image(path, max_chars) {
+                if !ocr_text.trim().is_empty() {
+                    return Ok(ocr_text);
+                }
+            }
+            return Ok(String::new());
+        }
+
+        if mime.starts_with("audio/")
             || mime.starts_with("video/")
             || mime.starts_with("font/")
             || mime == "application/zip"

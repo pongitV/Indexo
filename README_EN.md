@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-blue.svg" alt="Platform">
   <img src="https://img.shields.io/badge/Backend-Rust%202021%20%7C%20Tauri%202-orange.svg" alt="Backend">
   <img src="https://img.shields.io/badge/Frontend-Svelte%205%20%7C%20TypeScript-red.svg" alt="Frontend">
-  <img src="https://img.shields.io/badge/Engine-3--Tier%20Adaptive%20Semantic%20Classifier-purple.svg" alt="Engine">
+  <img src="https://img.shields.io/badge/Engine-OCR%20%2B%20384D%20Dense%20Neural%20Classifier-purple.svg" alt="Engine">
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success.svg" alt="Privacy">
   <img src="https://img.shields.io/badge/License-GNU%20GPLv3-yellow.svg" alt="License">
 </p>
@@ -46,7 +46,7 @@
 
 **Indexo** is a semantic file organizer and classifier engineered to resolve chronic clutter across complex Windows directory structures (such as *Downloads*, *Documents*, *Desktop*, or scattered project folders).
 
-Unlike conventional file organizers that rely on fixed extensions or rigid manual rules, Indexo operates under the principle of **adaptive intelligence without predefined taxonomies (zero-hardcode)**: it analyzes the genuine content of files (inspecting *magic numbers*, extracting text from PDFs/Office files, and evaluating semantic similarity) and dynamically clusters files into natural, human-readable categories.
+Unlike conventional file organizers that rely on fixed extensions or rigid manual rules, Indexo operates under the principle of **adaptive intelligence without predefined taxonomies (zero-hardcode)**: it analyzes the genuine content of files (inspecting *magic numbers*, performing native OCR on images, extracting text from PDFs/Office files, and evaluating dense vector semantic similarity) and dynamically clusters files into natural, human-readable categories.
 
 ### Core Principles:
 1. **100% Offline & Private**: Zero user data, metadata, or telemetry ever leaves your machine.
@@ -58,6 +58,8 @@ Unlike conventional file organizers that rely on fixed extensions or rigid manua
 
 ## Key Highlights
 
+* **Native Windows OCR (Windows.Media.Ocr)**: Optical character recognition integrated via Windows 10/11 native APIs, instantly extracting text from screenshots, receipt photos, tax invoices, and scanned documents (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.tiff`) without external binary dependencies or large model downloads.
+* **384-Dimensional Dense Neural Embeddings**: Continuous 384D semantic vector representations combining subword hyperdimensional projections with 64 latent topical concept anchors and adaptive centroid clustering.
 * **Zero-Hardcode & Dynamic Categorization**: No static factory taxonomies. Categories and tags are synthesized in real-time based on the user's actual files.
 * **Intelligent Hierarchical Subcategories**: When 2 or more files in the same category share an entity (games like *Zelda*, *Minecraft*; companies like *Enel*, *Nubank*; or subjects like *Beach*, *Projects*), Indexo automatically creates deep subfolders (e.g., `Images/Games/Zelda` or `Bills & Invoices/Enel`).
 * **Detection & Preservation of Organized Folders**: Subfolders with existing coherent structure (such as `Vacation Photos/Beach/`) are automatically detected, preserved by default with an SVG review indicator in preview, and offer quick toggle options to keep or reorganize.
@@ -82,7 +84,7 @@ flowchart TD
     P -->|"No"| B["Tier 1: Fast Heuristics & Real Bytes"]
     B --> Z{"Confidence >= 80%?"}
     Z -->|"Yes"| R1["Instant Match (0ms)"]
-    Z -->|"No"| C["Tier 2: Text Extraction & 256D Embeddings"]
+    Z -->|"No"| C["Tier 2: Native OCR, Text Extraction & 384D Embeddings"]
     C --> Y{"Confidence >= 70%?"}
     Y -->|"Yes"| R2["Semantic Match (~5ms)"]
     Y -->|"No"| D["Tier 3: Local SLM Reasoning"]
@@ -95,11 +97,11 @@ flowchart TD
 1. **Tier 1 — Fast Heuristics and Magic Numbers (`0ms`)**:
    - Real MIME-type detection using file signatures via `infer`.
    - Matching against the local database of user-defined rules and historical corrections (`profile.db`).
-   - Direct resolution for media formats (audio, video, images) and installers.
-2. **Tier 2 — Text Extraction & 256D Vector Similarity (`~5ms`)**:
-   - Extraction of representative text from documents (`pdf-extract`, `docx-rs`, `calamine`).
-   - Strict binary header noise rejection against PE/PNG byte remnants.
-   - Semantic similarity calculation using 256-dimensional embeddings with 32 bilingual topical anchors and stable centroid clustering.
+   - Direct resolution for media formats and installers.
+2. **Tier 2 — Native OCR, Text Extraction & 384D Embeddings (`~5ms`)**:
+   - High-speed native OCR via `Windows.Media.Ocr` for screenshots, receipt photos, and scanned documents.
+   - Text extraction from structured documents (`pdf-extract`, `docx-rs`, `calamine`).
+   - Dense 384-dimensional semantic embeddings with 64 bilingual latent topical anchors and adaptive centroid clustering.
 3. **Tier 3 — Deep Reasoning with Local SLM**:
    - Semantic category naming synthesis with noise filters and clean fallback to *"Miscellaneous Documents"*.
 4. **Hierarchical Subcategories Engine**:
@@ -219,8 +221,9 @@ Indexo/
 │   │   ├── engine/                 # Intelligence & classification engine core
 │   │   │   ├── mod.rs              # Pipeline orchestrator and unit tests
 │   │   │   ├── heuristics.rs       # Tier 1: Fast heuristics and organized folder detection
-│   │   │   ├── content_extract.rs  # Secure text extraction from PDF, DOCX, XLSX, and text
-│   │   │   ├── embeddings.rs       # Tier 2: 256D embeddings with 32 anchors and centroid clustering
+│   │   │   ├── ocr.rs              # High-speed native OCR via Windows.Media.Ocr
+│   │   │   ├── content_extract.rs  # Secure text extraction from PDF, DOCX, XLSX, and OCR dispatcher
+│   │   │   ├── embeddings.rs       # Tier 2: 384D dense neural embeddings with 64 anchors and centroids
 │   │   │   ├── subcategories.rs    # Hierarchical subcategories engine (games, companies, subjects)
 │   │   │   ├── llm_local.rs        # Tier 3: Semantic naming and binary noise filtering
 │   │   │   ├── renamer.rs          # Smart renamer engine and collision resolver

@@ -146,13 +146,17 @@ pub fn classify_by_heuristics(
         ext_detected.as_str()
     };
 
-    // Documentos textuais com nomes genéricos requerem análise semântica de conteúdo (Camada 2).
-    // Arquivos de mídia (fotos, vídeos, áudios), binários e códigos são resolvidos diretamente pelas heurísticas.
+    // Documentos textuais e imagens com nomes genéricos (ex: prints, scans) requerem análise semântica de conteúdo/OCR (Camada 2).
     let is_textual_doc = ["pdf", "docx", "doc", "odt", "rtf", "txt", "md", "csv", "tsv", "xlsx", "xls", "ods"]
         .contains(&effective_ext);
 
+    let is_ocr_candidate_image = crate::engine::ocr::is_ocr_supported_extension(effective_ext) && is_generic_name;
+
     let is_resolved = if is_textual_doc {
         final_confidence >= CONFIDENCE_THRESHOLD && !is_generic_name && !has_extension_mismatch
+    } else if is_ocr_candidate_image {
+        // Imagens com nomes genéricos (prints de tela, scans, fotos de documentos) passam pelo OCR na Camada 2
+        false
     } else {
         nlp_category.is_some() && !has_extension_mismatch && final_confidence >= 0.60
     };

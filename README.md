@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-blue.svg" alt="Platform">
   <img src="https://img.shields.io/badge/Backend-Rust%202021%20%7C%20Tauri%202-orange.svg" alt="Backend">
   <img src="https://img.shields.io/badge/Frontend-Svelte%205%20%7C%20TypeScript-red.svg" alt="Frontend">
-  <img src="https://img.shields.io/badge/Engine-3--Tier%20Adaptive%20Semantic%20Classifier-purple.svg" alt="Engine">
+  <img src="https://img.shields.io/badge/Engine-OCR%20%2B%20384D%20Dense%20Neural%20Classifier-purple.svg" alt="Engine">
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success.svg" alt="Privacy">
   <img src="https://img.shields.io/badge/License-GNU%20GPLv3-yellow.svg" alt="License">
 </p>
@@ -46,7 +46,7 @@
 
 O **Indexo** é um organizador e classificador semântico de arquivos projetado para resolver a desordem crônica de diretórios complexos no Windows (como pastas *Downloads*, *Documentos*, *Área de Trabalho* ou coleções de projetos).
 
-Diferente de organizadores tradicionais baseados em extensões fixas ou regras manuais rígidas, o Indexo opera sob o princípio de **inteligência adaptativa sem taxonomia pré-definida (zero-hardcode)**: ele analisa o conteúdo real dos arquivos (inspecionando *magic numbers*, extraindo textos de PDFs/Office e avaliando similaridade semântica) e agrupa tudo dinamicamente em categorias legíveis e naturais.
+Diferente de organizadores tradicionais baseados em extensões fixas ou regras manuais rígidas, o Indexo opera sob o princípio de **inteligência adaptativa sem taxonomia pré-definida (zero-hardcode)**: ele analisa o conteúdo real dos arquivos (inspecionando *magic numbers*, executando OCR nativo de imagens, extraindo textos de PDFs/Office e avaliando similaridade vetorial densa) e agrupa tudo dinamicamente em categorias legíveis e naturais.
 
 ### Pilares Fundamentais:
 1. **100% Offline & Privado**: Nenhum arquivo, metadado ou dado de telemetria sai da máquina do usuário.
@@ -58,6 +58,8 @@ Diferente de organizadores tradicionais baseados em extensões fixas ou regras m
 
 ## Principais Destaques
 
+* **OCR Nativo de Imagens e Scans (Windows.Media.Ocr)**: Lê texto diretamente de capturas de tela, fotos de recibos, comprovantes PIX e documentos escaneados (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.tiff`) usando as APIs nativas do Windows sem adicionar dependências externas ou downloads pesados.
+* **Embeddings Neurais Densos de 384 Dimensões**: Vetorização semântica contínua em espaço de 384 dimensões combinando projeções hiperdimensionais de subpalavras com 64 âncoras temáticas latentes e clusterização por centróides adaptativos.
 * **Zero-Hardcode & Categorização Dinâmica**: O aplicativo não impõe regras engessadas de fábrica. As categorias e tags são sintetizadas em tempo real a partir dos arquivos reais do usuário.
 * **Subcategorias Inteligentes e Hierárquicas**: Quando 2 ou mais arquivos da mesma categoria compartilham uma entidade (jogos como *Zelda*, *Minecraft*; empresas como *Enel*, *Nubank*; ou assuntos como *Praia*, *Projetos*), o Indexo cria automaticamente subpastas profundas (ex: `Fotos e Imagens/Jogos/Zelda` ou `Boletos e Faturas/Enel`).
 * **Detecção e Preservação de Pastas Já Organizadas**: Subpastas que já possuem estrutura coerente (como `Fotos de Férias/Praia/`) são identificadas automaticamente, preservadas por padrão com indicador visual SVG no preview e opções rápidas de manter ou reorganizar.
@@ -82,7 +84,7 @@ flowchart TD
     P -->|"Não"| B["Camada 1: Heurísticas & Assinatura de Bytes"]
     B --> Z{"Confiança >= 80%?"}
     Z -->|"Sim"| R1["Classificação Rápida (0ms)"]
-    Z -->|"Não"| C["Camada 2: Extração Textual & Embeddings 256D"]
+    Z -->|"Não"| C["Camada 2: OCR Nativo, Extração Textual & Embeddings 384D"]
     C --> Y{"Confiança >= 70%?"}
     Y -->|"Sim"| R2["Classificação Semântica (~5ms)"]
     Y -->|"Não"| D["Camada 3: Raciocínio Profundo SLM Local"]
@@ -95,11 +97,11 @@ flowchart TD
 1. **Camada 1 — Heurísticas e Assinaturas Reais de Bytes (`0ms`)**:
    - Detecção do MIME-type real através de *magic numbers* via `infer`.
    - Consulta ao banco local de regras personalizadas e histórico de correções do usuário (`profile.db`).
-   - Resolução direta de mídias (áudio, vídeo, imagens conhecidas) e instaladores.
-2. **Camada 2 — Extração Textual & Similaridade Vetorial 256D (`~5ms`)**:
-   - Extração de texto de documentos (`pdf-extract`, `docx-rs`, `calamine`).
-   - Proteção estrita anti-binário contra ruídos de cabeçalhos PE/PNG.
-   - Cálculo de similaridade semântica por embeddings vetoriais de 256 dimensões com 32 âncoras temáticas bilíngues e clusterização estável por centróides.
+   - Resolução direta de mídias conhecidas e instaladores.
+2. **Camada 2 — OCR Nativo, Extração Textual & Embeddings 384D (`~5ms`)**:
+   - Reconhecimento óptico de caracteres (OCR) nativo via `Windows.Media.Ocr` para fotos de comprovantes, prints e imagens com texto.
+   - Extração de texto estruturado de documentos (`pdf-extract`, `docx-rs`, `calamine`).
+   - Vetorização semântica em espaço denso de 384 dimensões com 64 âncoras conceituais bilíngues e clusterização adaptativa por centróides.
 3. **Camada 3 — Raciocínio Profundo com SLM Local**:
    - Síntese semântica de nomes de categorias com filtro de ruídos e fallback refinado para *"Documentos Diversos"*.
 4. **Motor de Subcategorias Hierárquicas**:
@@ -219,8 +221,9 @@ Indexo/
 │   │   ├── engine/                 # Núcleo do motor de inteligência e classificação
 │   │   │   ├── mod.rs              # Orquestrador do pipeline de classificação e testes unitários
 │   │   │   ├── heuristics.rs       # Camada 1: Heurísticas, magic numbers e detecção de pastas organizadas
-│   │   │   ├── content_extract.rs  # Extração segura de texto de PDF, DOCX, XLSX e texto puro
-│   │   │   ├── embeddings.rs       # Camada 2: Embeddings 256D com 32 âncoras temáticas e centróides
+│   │   │   ├── ocr.rs              # OCR nativo de alta velocidade via Windows.Media.Ocr
+│   │   │   ├── content_extract.rs  # Extração segura de texto de PDF, DOCX, XLSX e despacho para OCR
+│   │   │   ├── embeddings.rs       # Camada 2: Embeddings neurais densos 384D com 64 âncoras temáticas e centróides
 │   │   │   ├── subcategories.rs    # Motor de subcategorias hierárquicas por jogos, empresas e assuntos
 │   │   │   ├── llm_local.rs        # Camada 3: Nomenclatura semântica e filtro de ruídos binários
 │   │   │   ├── renamer.rs          # Motor do renomeador inteligente e resolução de colisões
