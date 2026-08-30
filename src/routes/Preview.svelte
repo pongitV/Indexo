@@ -508,31 +508,43 @@
   }
 
   // Handlers do menu de clique direito e cálculo de posicionamento (Viewport Clamping)
-  function clampContextMenu(node: HTMLElement) {
-    const winWidth = window.innerWidth;
-    const winHeight = window.innerHeight;
-    const rect = node.getBoundingClientRect();
+  function clampContextMenu(node: HTMLElement, coords: { x: number; y: number }) {
+    function position(pos: { x: number; y: number }) {
+      requestAnimationFrame(() => {
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+        const rect = node.getBoundingClientRect();
 
-    let newTop = contextMenu.y;
-    let newLeft = contextMenu.x;
+        let newTop = pos.y;
+        let newLeft = pos.x;
 
-    // Se o menu ultrapassar a borda inferior da janela, ajusta para cima
-    if (newTop + rect.height > winHeight - 12) {
-      newTop = Math.max(12, winHeight - rect.height - 12);
+        // Se o menu ultrapassar a borda inferior da janela, ajusta para cima
+        if (newTop + rect.height > winHeight - 12) {
+          newTop = Math.max(12, winHeight - rect.height - 12);
+        }
+
+        // Se o menu ultrapassar a borda direita da janela, ajusta para a esquerda
+        if (newLeft + rect.width > winWidth - 12) {
+          newLeft = Math.max(12, winWidth - rect.width - 12);
+        }
+
+        // Limites mínimos de segurança
+        if (newTop < 12) newTop = 12;
+        if (newLeft < 12) newLeft = 12;
+
+        node.style.top = `${newTop}px`;
+        node.style.left = `${newLeft}px`;
+        node.style.maxHeight = `${winHeight - 24}px`;
+      });
     }
 
-    // Se o menu ultrapassar a borda direita da janela, ajusta para a esquerda
-    if (newLeft + rect.width > winWidth - 12) {
-      newLeft = Math.max(12, winWidth - rect.width - 12);
-    }
+    position(coords);
 
-    // Limites mínimos de segurança
-    if (newTop < 12) newTop = 12;
-    if (newLeft < 12) newLeft = 12;
-
-    node.style.top = `${newTop}px`;
-    node.style.left = `${newLeft}px`;
-    node.style.maxHeight = `${winHeight - 24}px`;
+    return {
+      update(newCoords: { x: number; y: number }) {
+        position(newCoords);
+      },
+    };
   }
 
   function openFileContextMenu(e: MouseEvent, file: ClassifiedFile) {
@@ -989,8 +1001,7 @@
 {#if contextMenu.visible}
   <div
     class="custom-context-menu"
-    use:clampContextMenu
-    style="top: {contextMenu.y}px; left: {contextMenu.x}px;"
+    use:clampContextMenu={{ x: contextMenu.x, y: contextMenu.y }}
     role="menu"
     tabindex="-1"
     on:click|stopPropagation
