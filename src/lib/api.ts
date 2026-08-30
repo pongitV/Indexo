@@ -134,16 +134,23 @@ export async function saveSetting(key: string, value: string): Promise<void> {
 export interface FilePreviewData {
   filename: string;
   path: string;
-  file_type: "image" | "text" | "pdf" | "spreadsheet" | "audio" | "video" | "binary";
+  file_type: "image" | "text" | "code" | "pdf" | "spreadsheet" | "audio" | "video" | "binary";
   mime_type: string;
   size_bytes: number;
   text_content?: string | null;
   data_url?: string | null;
+  exif_date?: string | null;
+  dimensions?: string | null;
+  line_count?: number | null;
   error?: string | null;
 }
 
 export async function openInExplorer(path: string): Promise<void> {
   return invoke<void>("open_in_explorer", { path });
+}
+
+export async function openWithDefaultApp(path: string): Promise<void> {
+  return invoke<void>("open_with_default_app", { path });
 }
 
 export async function getFilePreview(path: string): Promise<FilePreviewData> {

@@ -48,6 +48,7 @@ fn main() {
             commands::profile::get_setting,
             commands::profile::save_setting,
             commands::system::open_in_explorer,
+            commands::system::open_with_default_app,
             commands::system::get_file_preview,
             commands::rename::suggest_semantic_names,
             commands::rename::apply_renames,

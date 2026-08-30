@@ -10,6 +10,9 @@ pub struct FilePreviewData {
     pub size_bytes: u64,
     pub text_content: Option<String>,
     pub data_url: Option<String>,
+    pub exif_date: Option<String>,
+    pub dimensions: Option<String>,
+    pub line_count: Option<usize>,
     pub error: Option<String>,
 }
 
@@ -35,6 +38,34 @@ fn base64_encode(data: &[u8]) -> String {
         }
     }
     result
+}
+
+/// Abre o arquivo diretamente com o programa padrão registrado no Windows (ex: Excel, Acrobat, Fotos, Photoshop)
+#[tauri::command]
+pub async fn open_with_default_app(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("Arquivo não encontrado: {}", path));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let win_path = path.replace('/', "\\");
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &win_path])
+            .spawn()
+            .map_err(|e| format!("Falha ao abrir com o aplicativo padrão: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Falha ao abrir com o aplicativo padrão: {}", e))?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -94,7 +125,7 @@ pub async fn get_file_preview(path: String) -> Result<FilePreviewData, String> {
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
 
-    let image_exts = ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "ico"];
+    let image_exts = ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "ico", "tiff", "tif"];
     let audio_exts = ["mp3", "wav", "flac", "aac", "ogg", "m4a"];
     let video_exts = ["mp4", "webm", "mkv", "avi", "mov"];
 
@@ -107,11 +138,19 @@ pub async fn get_file_preview(path: String) -> Result<FilePreviewData, String> {
             "svg" => "image/svg+xml",
             "bmp" => "image/bmp",
             "ico" => "image/x-icon",
+            "tiff" | "tif" => "image/tiff",
             _ => "image/png",
         };
+
+        let exif_date = crate::engine::content_extract::extract_exif_date(p);
+
         if size_bytes <= 30 * 1024 * 1024 {
             match std::fs::read(p) {
                 Ok(bytes) => {
+                    let dimensions = image::image_dimensions(p)
+                        .map(|(w, h)| format!("{} × {} px", w, h))
+                        .ok();
+
                     let base64_str = base64_encode(&bytes);
                     return Ok(FilePreviewData {
                         filename,
@@ -121,6 +160,9 @@ pub async fn get_file_preview(path: String) -> Result<FilePreviewData, String> {
                         size_bytes,
                         text_content: None,
                         data_url: Some(format!("data:{};base64,{}", mime, base64_str)),
+                        exif_date,
+                        dimensions,
+                        line_count: None,
                         error: None,
                     });
                 }
@@ -133,6 +175,9 @@ pub async fn get_file_preview(path: String) -> Result<FilePreviewData, String> {
                         size_bytes,
                         text_content: None,
                         data_url: None,
+                        exif_date,
+                        dimensions: None,
+                        line_count: None,
                         error: Some(format!("Falha ao ler imagem: {}", e)),
                     });
                 }
@@ -153,6 +198,9 @@ pub async fn get_file_preview(path: String) -> Result<FilePreviewData, String> {
                     size_bytes,
                     text_content: None,
                     data_url: Some(format!("data:{};base64,{}", mime, base64_str)),
+                    exif_date: None,
+                    dimensions: None,
+                    line_count: None,
                     error: None,
                 });
             }
@@ -172,6 +220,9 @@ pub async fn get_file_preview(path: String) -> Result<FilePreviewData, String> {
                     size_bytes,
                     text_content: None,
                     data_url: Some(format!("data:{};base64,{}", mime, base64_str)),
+                    exif_date: None,
+                    dimensions: None,
+                    line_count: None,
                     error: None,
                 });
             }
@@ -182,10 +233,13 @@ pub async fn get_file_preview(path: String) -> Result<FilePreviewData, String> {
     let max_preview_chars = 30_000;
     match crate::engine::content_extract::extract_text_snippet(p, max_preview_chars) {
         Ok(text) if !text.is_empty() => {
+            let line_count = Some(text.lines().count());
             let file_type = if ext == "pdf" {
                 "pdf"
             } else if ["xlsx", "xls", "ods", "csv", "tsv"].contains(&ext.as_str()) {
                 "spreadsheet"
+            } else if ["rs", "ts", "js", "py", "html", "css", "json", "toml", "yaml", "yml", "sql", "c", "cpp", "java", "sh", "ps1", "bat"].contains(&ext.as_str()) {
+                "code"
             } else {
                 "text"
             };
@@ -197,6 +251,9 @@ pub async fn get_file_preview(path: String) -> Result<FilePreviewData, String> {
                 size_bytes,
                 text_content: Some(text),
                 data_url: None,
+                exif_date: None,
+                dimensions: None,
+                line_count,
                 error: None,
             })
         }
@@ -209,6 +266,9 @@ pub async fn get_file_preview(path: String) -> Result<FilePreviewData, String> {
                 size_bytes,
                 text_content: None,
                 data_url: None,
+                exif_date: None,
+                dimensions: None,
+                line_count: None,
                 error: None,
             })
         }

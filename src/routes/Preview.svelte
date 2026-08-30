@@ -15,6 +15,7 @@
     listCategories,
     createCategory,
     openInExplorer,
+    openWithDefaultApp,
     getFilePreview,
     suggestSemanticNames,
     type Category,
@@ -25,6 +26,7 @@
     type FileRenameCandidate,
   } from "../lib/api";
   import FileTreeNode, { type TreeNodeData } from "../lib/FileTreeNode.svelte";
+  import FilePreviewModal from "../lib/FilePreviewModal.svelte";
 
   let searchQuery = "";
   let isApplying = false;
@@ -53,6 +55,7 @@
   let showFilePreviewModal = false;
   let previewLoading = false;
   let filePreviewData: FilePreviewData | null = null;
+  let activePreviewFile: ClassifiedFile | null = null;
 
   let allCategories: Category[] = [];
   let ignoredFileIds = new Set<string>();
@@ -530,17 +533,27 @@
   }
 
   // Ações do menu de contexto
-  async function handleOpenFilePreview(path: string) {
+  async function handleOpenFilePreview(file: ClassifiedFile) {
     closeContextMenu();
+    activePreviewFile = file;
     previewLoading = true;
     showFilePreviewModal = true;
     filePreviewData = null;
     try {
-      filePreviewData = await getFilePreview(path);
+      filePreviewData = await getFilePreview(file.path);
     } catch (err: any) {
       showToast("Erro ao carregar pré-visualização: " + err, "error");
     } finally {
       previewLoading = false;
+    }
+  }
+
+  async function handleOpenWithDefaultApp(path: string) {
+    closeContextMenu();
+    try {
+      await openWithDefaultApp(path);
+    } catch (err: any) {
+      showToast("Erro ao abrir com aplicativo padrão: " + err, "error");
     }
   }
 
@@ -1007,9 +1020,36 @@
         <div class="context-divider"></div>
       {/if}
 
-      <!-- 1. Mostrar no Preview Organizado -->
+      <!-- 1. Visualizar Conteúdo (Nativo) -->
       <button
         class="context-item highlight-action"
+        role="menuitem"
+        on:click={() => handleOpenFilePreview(contextMenu.file!)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        {$_("preview.context.preview")}
+      </button>
+
+      <!-- 2. Abrir no Aplicativo Padrão do Windows -->
+      <button
+        class="context-item"
+        role="menuitem"
+        on:click={() => handleOpenWithDefaultApp(contextMenu.file!.path)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+        Abrir no App Padrão
+      </button>
+
+      <!-- 3. Mostrar no Preview Organizado -->
+      <button
+        class="context-item"
         role="menuitem"
         on:click={() => handleShowInOrganizedPreview(contextMenu.file!)}
       >
@@ -1020,20 +1060,7 @@
         Mostrar no preview organizado
       </button>
 
-      <!-- 2. Visualizar -->
-      <button
-        class="context-item"
-        role="menuitem"
-        on:click={() => handleOpenFilePreview(contextMenu.file!.path)}
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-          <circle cx="12" cy="12" r="3"></circle>
-        </svg>
-        {$_("preview.context.preview")}
-      </button>
-
-      <!-- 3. Renomear Arquivo -->
+      <!-- 4. Renomear Arquivo -->
       <button
         class="context-item"
         role="menuitem"
@@ -1046,7 +1073,7 @@
         Renomear
       </button>
 
-      <!-- 4. Abrir no Explorador -->
+      <!-- 5. Abrir no Explorador -->
       <button
         class="context-item"
         role="menuitem"
@@ -1215,7 +1242,19 @@
         {$_("preview.context.change_folder_category")}
       </button>
 
-      <!-- 4. Alternar expansão -->
+      <!-- 4. Abrir Pasta no Explorador -->
+      <button
+        class="context-item"
+        role="menuitem"
+        on:click={() => handleOpenInExplorer(contextMenu.folder!.fullPath)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        {$_("preview.context.open_explorer")}
+      </button>
+
+      <!-- 5. Alternar expansão -->
       <button
         class="context-item"
         role="menuitem"
@@ -1586,105 +1625,18 @@
   </div>
 {/if}
 
-<!-- Modal Amplo: Visualização de Conteúdo do Arquivo -->
-{#if showFilePreviewModal}
-  <div
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    on:click|self={() => (showFilePreviewModal = false)}
-    on:keydown={(e) => e.key === "Escape" && (showFilePreviewModal = false)}
-  >
-    <div class="modal-card modal-card-large preview-viewer-modal">
-      <div class="modal-header-row">
-        <div class="preview-title-info">
-          <h2>📄 {filePreviewData?.filename ?? "Carregando visualização..."}</h2>
-          {#if filePreviewData}
-            <p class="modal-subtitle file-path-sub truncate" title={filePreviewData.path}>
-              {filePreviewData.path} • <code>{filePreviewData.mime_type}</code>
-            </p>
-          {/if}
-        </div>
-        <div class="preview-header-actions">
-          {#if filePreviewData}
-            <button
-              class="secondary-btn mini-action"
-              title="Abrir pasta no Windows Explorer"
-              on:click={() => handleOpenInExplorer(filePreviewData!.path)}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-              </svg>
-              Explorador
-            </button>
-          {/if}
-          <button class="close-btn" on:click={() => (showFilePreviewModal = false)}>✕</button>
-        </div>
-      </div>
-
-      <div class="preview-viewer-body">
-        {#if previewLoading}
-          <div class="viewer-loader">
-            <div class="mini-spinner large"></div>
-            <span>Lendo e renderizando conteúdo do arquivo...</span>
-          </div>
-        {:else if filePreviewData?.error}
-          <div class="viewer-error">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-            <p>{filePreviewData.error}</p>
-          </div>
-        {:else if filePreviewData}
-          {#if filePreviewData.file_type === "image" && filePreviewData.data_url}
-            <div class="image-viewer-container">
-              <img src={filePreviewData.data_url} alt={filePreviewData.filename} class="preview-rendered-img" />
-            </div>
-          {:else if filePreviewData.file_type === "audio" && filePreviewData.data_url}
-            <div class="media-viewer-container">
-              <div class="media-icon-badge">🎵</div>
-              <audio controls src={filePreviewData.data_url} class="audio-element"></audio>
-            </div>
-          {:else if filePreviewData.file_type === "video" && filePreviewData.data_url}
-            <div class="media-viewer-container">
-              <video controls src={filePreviewData.data_url} class="video-element">
-                <track kind="captions" />
-              </video>
-            </div>
-          {:else if filePreviewData.text_content}
-            <div class="text-viewer-container">
-              <pre class="code-content"><code>{filePreviewData.text_content}</code></pre>
-            </div>
-          {:else}
-            <div class="binary-viewer-container">
-              <div class="binary-icon">📦</div>
-              <h3>Formato binário / Arquivo grande</h3>
-              <p>Este arquivo não possui visualizador de texto direto. Você pode abri-lo no seu aplicativo padrão do Windows pelo Explorador de Arquivos.</p>
-              <button
-                class="primary-btn"
-                on:click={() => handleOpenInExplorer(filePreviewData!.path)}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                </svg>
-                Abrir no Windows Explorer
-              </button>
-            </div>
-          {/if}
-        {/if}
-      </div>
-
-      <div class="modal-actions">
-        <button class="secondary-btn" on:click={() => (showFilePreviewModal = false)}>
-          Fechar
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
+<!-- Modal Amplo: Visualização de Conteúdo do Arquivo (Inspector / Quick Look) -->
+<FilePreviewModal
+  show={showFilePreviewModal}
+  loading={previewLoading}
+  data={filePreviewData}
+  categoryName={activePreviewFile?.suggested_category}
+  categoryColor={activePreviewFile?.category_color ?? undefined}
+  confidence={activePreviewFile?.confidence}
+  onClose={() => (showFilePreviewModal = false)}
+  onOpenWithDefaultApp={handleOpenWithDefaultApp}
+  onOpenInExplorer={handleOpenInExplorer}
+/>
 
 <style>
   .preview-layout {
@@ -2355,71 +2307,6 @@
     align-items: center;
     gap: 1.25rem;
     padding: 2rem;
-  }
-
-  .media-icon-badge {
-    font-size: 3rem;
-  }
-
-  .audio-element {
-    width: 380px;
-  }
-
-  .video-element {
-    max-height: 480px;
-    max-width: 100%;
-    border-radius: var(--radius-md);
-  }
-
-  .text-viewer-container {
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-  }
-
-  .code-content {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: 0.84rem;
-    line-height: 1.5;
-    color: var(--text-primary);
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .binary-viewer-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 0.85rem;
-    max-width: 440px;
-    padding: 2rem;
-  }
-
-  .binary-icon {
-    font-size: 3.5rem;
-  }
-
-  .binary-viewer-container h3 {
-    margin: 0;
-    font-size: 1.1rem;
-    color: var(--text-primary);
-  }
-
-  .binary-viewer-container p {
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    line-height: 1.4;
-  }
-
-  .viewer-error {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    color: #ef4444;
-    font-size: 0.9rem;
   }
 
   .modal-actions {

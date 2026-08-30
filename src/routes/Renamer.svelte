@@ -17,6 +17,7 @@
     applyRenames,
     undoLastApply,
     openInExplorer,
+    openWithDefaultApp,
     getFilePreview,
     onScanProgress,
     onClassifyProgress,
@@ -28,6 +29,7 @@
     type ScanProgressPayload,
     type ClassifyProgressPayload,
   } from "../lib/api";
+  import FilePreviewModal from "../lib/FilePreviewModal.svelte";
 
   // Reorderable structure elements (sem emojis)
   interface StructureBlock {
@@ -410,6 +412,15 @@
       showToast("Erro ao abrir pré-visualização: " + err, "error");
     } finally {
       previewLoading = false;
+    }
+  }
+
+  async function handleOpenWithDefaultApp(path: string) {
+    closeContextMenu();
+    try {
+      await openWithDefaultApp(path);
+    } catch (err: any) {
+      showToast("Erro ao abrir com aplicativo padrão: " + err, "error");
     }
   }
 
@@ -1000,7 +1011,7 @@
 
     <!-- 3. Visualizar -->
     <button
-      class="context-item"
+      class="context-item highlight-action"
       role="menuitem"
       on:click={() => handleOpenPreview(contextMenu.item!.current_path)}
     >
@@ -1011,7 +1022,21 @@
       {$_("renamer.context.preview")}
     </button>
 
-    <!-- 4. Abrir no Explorador -->
+    <!-- 4. Abrir no Aplicativo Padrão -->
+    <button
+      class="context-item"
+      role="menuitem"
+      on:click={() => handleOpenWithDefaultApp(contextMenu.item!.current_path)}
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+        <polyline points="15 3 21 3 21 9"></polyline>
+        <line x1="10" y1="14" x2="21" y2="3"></line>
+      </svg>
+      Abrir no App Padrão
+    </button>
+
+    <!-- 5. Abrir no Explorador -->
     <button
       class="context-item"
       role="menuitem"
@@ -1107,88 +1132,15 @@
   </div>
 {/if}
 
-<!-- Modal: Visualização de Arquivo -->
-{#if showPreviewModal}
-  <div
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    on:click|self={() => (showPreviewModal = false)}
-    on:keydown={(e) => e.key === "Escape" && (showPreviewModal = false)}
-  >
-    <div class="modal-card modal-card-large preview-viewer-modal">
-      <div class="modal-header-row">
-        <div class="preview-title-info">
-          <h2>{filePreviewData?.filename ?? "Carregando..."}</h2>
-          {#if filePreviewData}
-            <p class="modal-subtitle file-path-sub truncate" title={filePreviewData.path}>
-              {filePreviewData.path} • <strong>{formatBytes(filePreviewData.size_bytes)}</strong>
-            </p>
-          {/if}
-        </div>
-        <div class="preview-header-actions">
-          {#if filePreviewData}
-            <button
-              class="secondary-btn mini-action"
-              on:click={() => handleOpenExplorer(filePreviewData!.path)}
-            >
-              Explorador
-            </button>
-          {/if}
-          <button class="close-btn" on:click={() => (showPreviewModal = false)}>✕</button>
-        </div>
-      </div>
-
-      <div class="preview-viewer-body">
-        {#if previewLoading}
-          <div class="viewer-loader">
-            <div class="mini-spinner large"></div>
-            <span>Renderizando visualização...</span>
-          </div>
-        {:else if filePreviewData?.error}
-          <div class="viewer-error"><p>{filePreviewData.error}</p></div>
-        {:else if filePreviewData}
-          {#if filePreviewData.file_type === "image" && filePreviewData.data_url}
-            <div class="image-viewer-container">
-              <img src={filePreviewData.data_url} alt={filePreviewData.filename} class="preview-rendered-img" />
-            </div>
-          {:else if filePreviewData.file_type === "audio" && filePreviewData.data_url}
-            <div class="media-viewer-container">
-              <audio controls src={filePreviewData.data_url} class="audio-element"></audio>
-            </div>
-          {:else if filePreviewData.file_type === "video" && filePreviewData.data_url}
-            <div class="media-viewer-container">
-              <video controls src={filePreviewData.data_url} class="video-element">
-                <track kind="captions" />
-              </video>
-            </div>
-          {:else if filePreviewData.text_content}
-            <div class="text-viewer-container">
-              <pre class="code-content"><code>{filePreviewData.text_content}</code></pre>
-            </div>
-          {:else}
-            <div class="binary-viewer-container">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-              </svg>
-              <h3>Formato binário / Arquivo grande</h3>
-              <button class="primary-btn" on:click={() => handleOpenExplorer(filePreviewData!.path)}>
-                Abrir no Windows Explorer
-              </button>
-            </div>
-          {/if}
-        {/if}
-      </div>
-
-      <div class="modal-actions">
-        <button class="secondary-btn" on:click={() => (showPreviewModal = false)}>
-          Fechar
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
+<!-- Modal Amplo: Visualização de Conteúdo do Arquivo (Inspector / Quick Look) -->
+<FilePreviewModal
+  show={showPreviewModal}
+  loading={previewLoading}
+  data={filePreviewData}
+  onClose={() => (showPreviewModal = false)}
+  onOpenWithDefaultApp={handleOpenWithDefaultApp}
+  onOpenInExplorer={handleOpenExplorer}
+/>
 
 <style>
   .renamer-view-page {
@@ -2024,39 +1976,11 @@
     gap: 1rem;
   }
 
-  .modal-card-large {
-    max-width: 860px;
-    max-height: 85vh;
-    overflow: hidden;
-  }
-
-  .modal-header-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .modal-header-row h2 {
-    font-size: 1.25rem;
-    font-weight: 700;
-    margin: 0 0 0.25rem 0;
-    color: var(--text-primary);
-  }
-
   .modal-subtitle {
     font-size: 0.85rem;
     color: var(--text-muted);
     margin: 0;
     line-height: 1.4;
-  }
-
-  .close-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.1rem;
-    cursor: pointer;
   }
 
   .text-input {
@@ -2072,32 +1996,6 @@
 
   .text-input:focus {
     border-color: var(--accent-primary);
-  }
-
-  .preview-viewer-modal {
-    max-width: 940px;
-    height: 82vh;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .preview-viewer-body {
-    flex: 1;
-    overflow-y: auto;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 250px;
-    padding: 1rem;
-  }
-
-  .preview-rendered-img {
-    max-width: 100%;
-    max-height: 520px;
-    object-fit: contain;
   }
 
   .modal-actions {
@@ -2118,13 +2016,6 @@
 
   .mini-spinner.small {
     border-color: rgba(59, 130, 246, 0.2);
-    border-top-color: var(--accent-primary);
-  }
-
-  .mini-spinner.large {
-    width: 28px;
-    height: 28px;
-    border-width: 3px;
     border-top-color: var(--accent-primary);
   }
 
