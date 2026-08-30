@@ -80,3 +80,28 @@ pub struct ScanSessionRecord {
     pub files_scanned: i64,
     pub status: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CategoryHistoryRecord {
+    pub id: String,
+    pub category_id: String,
+    pub old_name: String,
+    pub new_name: String,
+    pub changed_by: String, // 'user' | 'ai_refinement' | 'merge' | 'auto'
+    pub reason: Option<String>,
+    pub changed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationSessionSummary {
+    pub session_id: String,
+    pub root_path: String,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub status: String,
+    pub files_scanned: i64,
+    pub files_moved_count: usize,
+    pub undone_count: usize,
+    pub categories_assigned: Vec<String>,
+    pub moves: Vec<MoveLogRecord>,
+}

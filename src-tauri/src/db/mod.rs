@@ -237,15 +237,89 @@ impl Database {
         Ok(list)
     }
 
-    /// Renomeia uma categoria
+    /// Renomeia uma categoria e registra o histórico da alteração
     pub fn rename_category(&self, id: &str, new_name: &str) -> anyhow::Result<()> {
+        self.rename_category_with_details(id, new_name, "user", None)
+    }
+
+    /// Renomeia categoria com detalhes de autoria e motivo (user | ai_refinement | merge | auto)
+    pub fn rename_category_with_details(
+        &self,
+        id: &str,
+        new_name: &str,
+        changed_by: &str,
+        reason: Option<&str>,
+    ) -> anyhow::Result<()> {
         let trimmed = new_name.trim();
-        let slug = slugify(trimmed);
+        if trimmed.is_empty() {
+            anyhow::bail!("O nome da categoria não pode ser vazio.");
+        }
+
+        let old_name: Option<String> = self.conn.query_row(
+            "SELECT name FROM categories WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        ).ok();
+
+        if let Some(old) = old_name {
+            if old != trimmed {
+                let slug = slugify(trimmed);
+                self.conn.execute(
+                    "UPDATE categories SET name = ?1, slug = ?2 WHERE id = ?3",
+                    params![trimmed, slug, id],
+                )?;
+
+                self.record_category_change(id, &old, trimmed, changed_by, reason)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Registra uma entrada no histórico de mudanças de uma categoria/tag
+    pub fn record_category_change(
+        &self,
+        category_id: &str,
+        old_name: &str,
+        new_name: &str,
+        changed_by: &str,
+        reason: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
         self.conn.execute(
-            "UPDATE categories SET name = ?1, slug = ?2 WHERE id = ?3",
-            params![trimmed, slug, id],
+            "INSERT INTO category_history (id, category_id, old_name, new_name, changed_by, reason, changed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![id, category_id, old_name, new_name, changed_by, reason, now],
         )?;
         Ok(())
+    }
+
+    /// Busca a timeline do histórico de mudanças de uma categoria/tag
+    pub fn get_category_history(&self, category_id: &str) -> anyhow::Result<Vec<models::CategoryHistoryRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, category_id, old_name, new_name, changed_by, reason, changed_at
+             FROM category_history
+             WHERE category_id = ?1
+             ORDER BY changed_at DESC",
+        )?;
+
+        let rows = stmt.query_map(params![category_id], |row| {
+            Ok(models::CategoryHistoryRecord {
+                id: row.get(0)?,
+                category_id: row.get(1)?,
+                old_name: row.get(2)?,
+                new_name: row.get(3)?,
+                changed_by: row.get(4)?,
+                reason: row.get(5)?,
+                changed_at: row.get(6)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
     }
 
     /// Mescla categoria source_id na target_id
@@ -480,6 +554,117 @@ impl Database {
         Ok(())
     }
 
+    /// Busca o histórico de todas as sessões de organização com detalhes de tags e arquivos
+    pub fn get_organization_history(&self) -> anyhow::Result<Vec<models::OrganizationSessionSummary>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT s.id, s.root_path, s.started_at, s.finished_at, s.status, s.files_scanned
+             FROM scan_sessions s
+             WHERE EXISTS (SELECT 1 FROM move_log m WHERE m.session_id = s.id)
+                OR s.status = 'done'
+             ORDER BY s.started_at DESC",
+        )?;
+
+        let session_rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+            ))
+        })?;
+
+        let mut summaries = Vec::new();
+
+        for s in session_rows {
+            let (session_id, root_path, started_at, finished_at, status, files_scanned) = s?;
+
+            // Buscar todos os moves da sessão
+            let mut move_stmt = self.conn.prepare(
+                "SELECT id, session_id, file_id, from_path, to_path, moved_at, undone
+                 FROM move_log WHERE session_id = ?1 ORDER BY moved_at DESC",
+            )?;
+
+            let move_rows = move_stmt.query_map(params![session_id], |row| {
+                Ok(MoveLogRecord {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    file_id: row.get(2)?,
+                    from_path: row.get(3)?,
+                    to_path: row.get(4)?,
+                    moved_at: row.get(5)?,
+                    undone: row.get(6)?,
+                })
+            })?;
+
+            let mut moves = Vec::new();
+            let mut undone_count = 0;
+            for m in move_rows {
+                let rec = m?;
+                if rec.undone != 0 {
+                    undone_count += 1;
+                }
+                moves.push(rec);
+            }
+            let files_moved_count = moves.len();
+
+            // Buscar categorias e tags atribuídas nesta sessão
+            let mut cat_stmt = self.conn.prepare(
+                "SELECT DISTINCT c.name
+                 FROM file_categories fc
+                 JOIN categories c ON c.id = fc.category_id
+                 JOIN files f ON f.id = fc.file_id
+                 WHERE f.session_id = ?1
+                 ORDER BY c.name ASC",
+            )?;
+
+            let cat_rows = cat_stmt.query_map(params![session_id], |row| row.get::<_, String>(0))?;
+            let mut categories_assigned = Vec::new();
+            for c in cat_rows {
+                categories_assigned.push(c?);
+            }
+
+            summaries.push(models::OrganizationSessionSummary {
+                session_id,
+                root_path,
+                started_at,
+                finished_at,
+                status,
+                files_scanned,
+                files_moved_count,
+                undone_count,
+                categories_assigned,
+                moves,
+            });
+        }
+
+        Ok(summaries)
+    }
+
+    /// Desfaz todos os moves de uma sessão específica
+    pub fn undo_session_moves(&self, session_id: &str) -> anyhow::Result<usize> {
+        let moves = self.get_session_moves(session_id)?;
+        let mut undone_count = 0;
+
+        for m in moves {
+            let from_p = std::path::Path::new(&m.from_path);
+            let to_p = std::path::Path::new(&m.to_path);
+
+            if to_p.exists() {
+                if crate::fs_ops::mover::safe_move(to_p, from_p).is_ok() {
+                    let _ = self.mark_move_undone(&m.id);
+                    undone_count += 1;
+                }
+            } else {
+                let _ = self.mark_move_undone(&m.id);
+                undone_count += 1;
+            }
+        }
+
+        Ok(undone_count)
+    }
+
     /// Busca configuracao em settings
     pub fn get_setting(&self, key: &str) -> anyhow::Result<Option<String>> {
         let val = self.conn.query_row(
@@ -624,7 +809,26 @@ mod tests {
         let theme_setting = db.get_setting("theme").unwrap();
         assert_eq!(theme_setting, Some("dark".to_string()));
 
-        // 7. Limpeza e expurgo de categorias automáticas
+        // 7. Histórico de Mudanças da Categoria
+        let hist_cat = db.get_or_create_category("Recibos Antigos", "user", None).unwrap();
+        db.rename_category_with_details(&hist_cat.id, "Comprovantes 2026", "user", Some("Atualização manual")).unwrap();
+        db.rename_category_with_details(&hist_cat.id, "Comprovantes Fiscais", "ai_refinement", Some("Refinamento semântico")).unwrap();
+        let history = db.get_category_history(&hist_cat.id).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].new_name, "Comprovantes Fiscais");
+        assert_eq!(history[0].old_name, "Comprovantes 2026");
+        assert_eq!(history[0].changed_by, "ai_refinement");
+        assert_eq!(history[1].new_name, "Comprovantes 2026");
+        assert_eq!(history[1].old_name, "Recibos Antigos");
+
+        // 8. Histórico Geral de Organizações
+        let org_history = db.get_organization_history().unwrap();
+        assert!(!org_history.is_empty());
+        let session_record = org_history.iter().find(|s| s.session_id == session_id).unwrap();
+        assert_eq!(session_record.files_moved_count, 1);
+        assert!(session_record.categories_assigned.contains(&"Contratos".to_string()));
+
+        // 9. Limpeza e expurgo de categorias automáticas
         let auto_unused = db.get_or_create_category("Auto Tag Orfa", "auto", None).unwrap();
         assert!(db.list_categories().unwrap().iter().any(|c| c.id == auto_unused.id));
         let cleaned = db.clean_unused_auto_categories().unwrap();

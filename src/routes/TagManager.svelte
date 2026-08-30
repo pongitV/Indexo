@@ -12,6 +12,7 @@
     type Category,
   } from "../lib/api";
   import { showToast } from "../lib/stores";
+  import CategoryHistoryModal from "../lib/CategoryHistoryModal.svelte";
 
   let tags: Category[] = [];
   let searchQuery = "";
@@ -24,6 +25,7 @@
   let showMergeModal = false;
   let showDeleteModal = false;
   let showPurgeModal = false;
+  let showHistoryModal = false;
 
   let activeTag: Category | null = null;
   let inputName = "";
@@ -81,6 +83,11 @@
   function openDeleteModal(tag: Category) {
     activeTag = tag;
     showDeleteModal = true;
+  }
+
+  function openHistoryModal(tag: Category) {
+    activeTag = tag;
+    showHistoryModal = true;
   }
 
   async function handleCreate() {
@@ -251,6 +258,13 @@
             </div>
 
             <div class="tag-actions-row">
+              <button class="action-btn" title="Histórico de Mudanças" on:click={() => openHistoryModal(tag)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </button>
+
               <button class="action-btn" title={$_("tags.rename")} on:click={() => openRenameModal(tag)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -424,6 +438,15 @@
     </div>
   </div>
 {/if}
+
+<!-- Modal: Histórico de Mudanças da Tag -->
+<CategoryHistoryModal
+  show={showHistoryModal}
+  categoryId={activeTag?.id ?? null}
+  categoryName={activeTag?.name ?? ""}
+  categoryColor={activeTag?.color ?? null}
+  onClose={() => (showHistoryModal = false)}
+/>
 
 <style>
   .tags-view {

@@ -17,6 +17,7 @@
   import Renamer from "./routes/Renamer.svelte";
   import TagManager from "./routes/TagManager.svelte";
   import CategoryManager from "./routes/CategoryManager.svelte";
+  import History from "./routes/History.svelte";
   import Settings from "./routes/Settings.svelte";
 
   onMount(async () => {
@@ -143,6 +144,18 @@
 
       <button
         class="nav-btn"
+        class:active={$currentView === "history"}
+        on:click={() => currentView.set("history")}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        {$_("nav.history")}
+      </button>
+
+      <button
+        class="nav-btn"
         class:active={$currentView === "settings"}
         on:click={() => currentView.set("settings")}
       >
@@ -198,6 +211,8 @@
       <TagManager />
     {:else if $currentView === "categories"}
       <CategoryManager />
+    {:else if $currentView === "history"}
+      <History />
     {:else if $currentView === "settings"}
       <Settings />
     {/if}

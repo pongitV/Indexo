@@ -90,3 +90,14 @@ CREATE TABLE IF NOT EXISTS settings (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS category_history (
+    id          TEXT PRIMARY KEY,
+    category_id TEXT NOT NULL,
+    old_name    TEXT NOT NULL,
+    new_name    TEXT NOT NULL,
+    changed_by  TEXT NOT NULL DEFAULT 'user', -- 'user' | 'ai_refinement' | 'merge' | 'auto'
+    reason      TEXT,
+    changed_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_category_history_cat ON category_history(category_id);

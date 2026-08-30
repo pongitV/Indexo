@@ -95,6 +95,51 @@ export async function deleteCategory(id: string): Promise<void> {
   return invoke<void>("delete_category", { id });
 }
 
+export interface CategoryHistoryRecord {
+  id: string;
+  category_id: string;
+  old_name: string;
+  new_name: string;
+  changed_by: string; // 'user' | 'ai_refinement' | 'merge' | 'auto'
+  reason?: string | null;
+  changed_at: string;
+}
+
+export interface MoveLogRecord {
+  id: string;
+  session_id: string;
+  file_id: string;
+  from_path: string;
+  to_path: string;
+  moved_at: string;
+  undone: number;
+}
+
+export interface OrganizationSessionSummary {
+  session_id: string;
+  root_path: string;
+  started_at: string;
+  finished_at?: string | null;
+  status: string;
+  files_scanned: number;
+  files_moved_count: number;
+  undone_count: number;
+  categories_assigned: string[];
+  moves: MoveLogRecord[];
+}
+
+export async function getCategoryHistory(categoryId: string): Promise<CategoryHistoryRecord[]> {
+  return invoke<CategoryHistoryRecord[]>("get_category_history", { categoryId });
+}
+
+export async function getOrganizationHistory(): Promise<OrganizationSessionSummary[]> {
+  return invoke<OrganizationSessionSummary[]>("get_organization_history");
+}
+
+export async function undoSession(sessionId: string): Promise<number> {
+  return invoke<number>("undo_session", { sessionId });
+}
+
 export async function cleanUnusedCategories(): Promise<number> {
   return invoke<number>("clean_unused_categories");
 }

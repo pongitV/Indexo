@@ -213,6 +213,32 @@ pub async fn import_profile(
 }
 
 #[tauri::command]
+pub async fn get_category_history(
+    category_id: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<Vec<crate::db::models::CategoryHistoryRecord>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_category_history(&category_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_organization_history(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<Vec<crate::db::models::OrganizationSessionSummary>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_organization_history().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn undo_session(
+    session_id: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<usize, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.undo_session_moves(&session_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn get_setting(
     key: String,
     state: tauri::State<'_, crate::AppState>,
