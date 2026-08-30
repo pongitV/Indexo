@@ -507,32 +507,49 @@
     return files;
   }
 
-  // Handlers do menu de clique direito
-  function openFileContextMenu(e: MouseEvent, file: ClassifiedFile) {
-    const menuWidth = 300;
-    const menuMaxHeight = 480;
-    const posX = Math.max(12, Math.min(e.clientX, window.innerWidth - menuWidth - 16));
-    const posY = Math.max(12, Math.min(e.clientY, window.innerHeight - menuMaxHeight - 16));
+  // Handlers do menu de clique direito e cálculo de posicionamento (Viewport Clamping)
+  function clampContextMenu(node: HTMLElement) {
+    const winWidth = window.innerWidth;
+    const winHeight = window.innerHeight;
+    const rect = node.getBoundingClientRect();
 
+    let newTop = contextMenu.y;
+    let newLeft = contextMenu.x;
+
+    // Se o menu ultrapassar a borda inferior da janela, ajusta para cima
+    if (newTop + rect.height > winHeight - 12) {
+      newTop = Math.max(12, winHeight - rect.height - 12);
+    }
+
+    // Se o menu ultrapassar a borda direita da janela, ajusta para a esquerda
+    if (newLeft + rect.width > winWidth - 12) {
+      newLeft = Math.max(12, winWidth - rect.width - 12);
+    }
+
+    // Limites mínimos de segurança
+    if (newTop < 12) newTop = 12;
+    if (newLeft < 12) newLeft = 12;
+
+    node.style.top = `${newTop}px`;
+    node.style.left = `${newLeft}px`;
+    node.style.maxHeight = `${winHeight - 24}px`;
+  }
+
+  function openFileContextMenu(e: MouseEvent, file: ClassifiedFile) {
     contextMenu = {
       visible: true,
-      x: posX,
-      y: posY,
+      x: e.clientX,
+      y: e.clientY,
       file,
       folder: null,
     };
   }
 
   function openFolderContextMenu(e: MouseEvent, folder: TreeNodeData) {
-    const menuWidth = 300;
-    const menuMaxHeight = 440;
-    const posX = Math.max(12, Math.min(e.clientX, window.innerWidth - menuWidth - 16));
-    const posY = Math.max(12, Math.min(e.clientY, window.innerHeight - menuMaxHeight - 16));
-
     contextMenu = {
       visible: true,
-      x: posX,
-      y: posY,
+      x: e.clientX,
+      y: e.clientY,
       file: null,
       folder,
     };
@@ -972,6 +989,7 @@
 {#if contextMenu.visible}
   <div
     class="custom-context-menu"
+    use:clampContextMenu
     style="top: {contextMenu.y}px; left: {contextMenu.x}px;"
     role="menu"
     tabindex="-1"
@@ -1881,33 +1899,23 @@
     box-shadow: var(--shadow-xl);
     padding: 0.5rem;
     width: 290px;
-    max-height: min(480px, calc(100vh - 28px));
+    max-height: calc(100vh - 24px);
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
-    animation: fadeIn 150ms ease-out;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-medium) transparent;
+    animation: fadeIn 120ms ease-out;
+    /* Oculta a barra de rolagem visualmente mantendo o scroll 100% funcional */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE e Edge */
   }
 
   .custom-context-menu::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .custom-context-menu::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .custom-context-menu::-webkit-scrollbar-thumb {
-    background: var(--border-medium);
-    border-radius: 4px;
-  }
-
-  .custom-context-menu::-webkit-scrollbar-thumb:hover {
-    background: var(--text-muted);
+    display: none; /* Chrome, Safari e Webview2 */
+    width: 0px;
+    height: 0px;
   }
 
   .context-card-header {
