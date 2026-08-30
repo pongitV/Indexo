@@ -19,12 +19,15 @@
   export let node: TreeNodeData;
   export let expandedIds: Set<string>;
   export let highlightedNodeId: string | null = null;
+  export let selectedFileIds: Set<string> | undefined = undefined;
   export let onToggleFolder: (id: string) => void;
   export let onFileContextMenu: (e: MouseEvent, file: ClassifiedFile) => void;
   export let onFolderContextMenu: ((e: MouseEvent, node: TreeNodeData) => void) | undefined = undefined;
+  export let onFileClick: ((e: MouseEvent, file: ClassifiedFile) => void) | undefined = undefined;
 
   $: isExpanded = expandedIds.has(node.id);
   $: isHighlighted = highlightedNodeId === node.id;
+  $: isSelected = node.file && selectedFileIds ? selectedFileIds.has(node.file.file_id) : false;
 
   function getFileExtension(filename: string): string {
     const parts = filename.split(".");
@@ -77,6 +80,19 @@
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onToggleFolder(node.id);
+    }
+  }
+
+  function handleItemClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (node.isFolder) {
+      onToggleFolder(node.id);
+    } else if (node.file) {
+      if (onFileClick) {
+        onFileClick(e, node.file);
+      } else {
+        onFileContextMenu(e, node.file);
+      }
     }
   }
 
@@ -153,9 +169,11 @@
             node={child}
             {expandedIds}
             {highlightedNodeId}
+            {selectedFileIds}
             {onToggleFolder}
             {onFileContextMenu}
             {onFolderContextMenu}
+            {onFileClick}
           />
         {/each}
       </div>
@@ -168,15 +186,24 @@
     class="tree-row file-row"
     id={node.id}
     class:highlighted={isHighlighted}
+    class:selected={isSelected}
     role="button"
     tabindex="0"
-    title="{node.name}&#10;Tag / Categoria: {node.file?.suggested_category ?? 'Sem tag'}&#10;Caminho: {node.fullPath}&#10;Clique com o botão direito do mouse para opções"
+    title="{node.name}&#10;Tag / Categoria: {node.file?.suggested_category ?? 'Sem tag'}&#10;Caminho: {node.fullPath}&#10;Ctrl+Clique para multi-seleção | Clique direito para opções"
     on:contextmenu={handleRightClick}
-    on:click={handleRightClick}
-    on:keydown={(e) => (e.key === "Enter" || e.key === " ") && handleRightClick(e as any)}
+    on:click={handleItemClick}
+    on:keydown={(e) => (e.key === "Enter" || e.key === " ") && handleItemClick(e as any)}
   >
-    <!-- Spacer alignment with folder chevron -->
-    <div class="chevron-spacer"></div>
+    <!-- Checkbox/Spacer for selection -->
+    {#if isSelected}
+      <div class="selection-check-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+    {:else}
+      <div class="chevron-spacer"></div>
+    {/if}
 
     <!-- File Icon -->
     <div class="row-icon file-icon" style="color: {getFileIconColor(ext)};">
@@ -265,6 +292,24 @@
   .chevron-box.rotated {
     transform: rotate(90deg);
     color: var(--accent-primary);
+  }
+
+  .tree-row.selected {
+    background: rgba(59, 130, 246, 0.18) !important;
+    border-color: var(--accent-primary) !important;
+    box-shadow: inset 0 0 0 1px var(--accent-primary);
+  }
+
+  .selection-check-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-primary);
+    color: white;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
   }
 
   .chevron-spacer {

@@ -79,6 +79,182 @@ impl Database {
         Ok(root)
     }
 
+    // ==========================================
+    // REGRAS PERSONALIZADAS (CUSTOM RULES)
+    // ==========================================
+
+    pub fn create_custom_rule(&self, input: models::CreateCustomRuleInput) -> anyhow::Result<models::CustomRule> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let priority = input.priority.unwrap_or(10);
+
+        self.conn.execute(
+            "INSERT INTO custom_rules (id, name, condition_field, condition_operator, condition_value, action_type, action_value, is_enabled, priority, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10)",
+            params![id, input.name, input.condition_field, input.condition_operator, input.condition_value, input.action_type, input.action_value, priority, now, now],
+        )?;
+
+        Ok(models::CustomRule {
+            id,
+            name: input.name,
+            condition_field: input.condition_field,
+            condition_operator: input.condition_operator,
+            condition_value: input.condition_value,
+            action_type: input.action_type,
+            action_value: input.action_value,
+            is_enabled: true,
+            priority,
+            created_at: now.clone(),
+            updated_at: now,
+        })
+    }
+
+    pub fn list_custom_rules(&self) -> anyhow::Result<Vec<models::CustomRule>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, condition_field, condition_operator, condition_value, action_type, action_value, is_enabled, priority, created_at, updated_at
+             FROM custom_rules
+             ORDER BY priority DESC, created_at DESC",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            let is_enabled_int: i64 = row.get(7)?;
+            Ok(models::CustomRule {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                condition_field: row.get(2)?,
+                condition_operator: row.get(3)?,
+                condition_value: row.get(4)?,
+                action_type: row.get(5)?,
+                action_value: row.get(6)?,
+                is_enabled: is_enabled_int != 0,
+                priority: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    pub fn update_custom_rule(&self, rule: models::CustomRule) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE custom_rules SET
+                name = ?1, condition_field = ?2, condition_operator = ?3, condition_value = ?4,
+                action_type = ?5, action_value = ?6, is_enabled = ?7, priority = ?8, updated_at = ?9
+             WHERE id = ?10",
+            params![
+                rule.name, rule.condition_field, rule.condition_operator, rule.condition_value,
+                rule.action_type, rule.action_value, if rule.is_enabled { 1 } else { 0 }, rule.priority, now, rule.id
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_custom_rule(&self, id: &str) -> anyhow::Result<()> {
+        self.conn.execute("DELETE FROM custom_rules WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn toggle_custom_rule(&self, id: &str, is_enabled: bool) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE custom_rules SET is_enabled = ?1, updated_at = ?2 WHERE id = ?3",
+            params![if is_enabled { 1 } else { 0 }, now, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_all_learned_rules(&self) -> anyhow::Result<Vec<models::LearnedRuleInfo>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT r.id, r.pattern_type, r.pattern_value, r.category_id, c.name, c.color,
+                    r.confidence_weight, r.created_from, r.hit_count, r.created_at, r.updated_at
+             FROM classification_rules r
+             LEFT JOIN categories c ON c.id = r.category_id
+             ORDER BY r.hit_count DESC, r.updated_at DESC",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(models::LearnedRuleInfo {
+                id: row.get(0)?,
+                pattern_type: row.get(1)?,
+                pattern_value: row.get(2)?,
+                category_id: row.get(3)?,
+                category_name: row.get::<_, Option<String>>(4)?.unwrap_or_else(|| "Geral".to_string()),
+                category_color: row.get(5)?,
+                confidence_weight: row.get(6)?,
+                created_from: row.get(7)?,
+                hit_count: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    pub fn delete_learned_rule(&self, id: &str) -> anyhow::Result<()> {
+        self.conn.execute("DELETE FROM classification_rules WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn get_storage_analytics(&self) -> anyhow::Result<models::StorageAnalytics> {
+        let history = self.get_organization_history()?;
+        let total_sessions_count = history.len() as i64;
+        let mut total_organized_files: i64 = 0;
+        let mut total_organized_bytes: i64 = 0;
+        let mut cat_bytes_map: std::collections::HashMap<String, (String, Option<String>, i64, i64)> = std::collections::HashMap::new();
+        let mut dates_set = std::collections::BTreeSet::new();
+
+        for s in &history {
+            dates_set.insert(s.started_at.chars().take(10).collect::<String>());
+            for f in &s.files {
+                total_organized_files += 1;
+                total_organized_bytes += f.size_bytes;
+
+                let cat_name = if f.category_name.is_empty() { "Outros".to_string() } else { f.category_name.clone() };
+                let entry = cat_bytes_map.entry(cat_name.clone()).or_insert((cat_name, f.category_color.clone(), 0, 0));
+                entry.2 += 1;
+                entry.3 += f.size_bytes;
+            }
+        }
+
+        let mut categories_breakdown = Vec::new();
+        for (_, (cat_name, color, count, bytes)) in cat_bytes_map {
+            let percentage = if total_organized_bytes > 0 {
+                (bytes as f64 / total_organized_bytes as f64) * 100.0
+            } else {
+                0.0
+            };
+            categories_breakdown.push(models::StorageCategoryStat {
+                category_name: cat_name,
+                category_color: color,
+                total_files: count,
+                total_bytes: bytes,
+                percentage,
+            });
+        }
+
+        categories_breakdown.sort_by(|a, b| b.total_bytes.cmp(&a.total_bytes));
+        let recent_activity_dates = dates_set.into_iter().rev().take(14).collect();
+
+        Ok(models::StorageAnalytics {
+            total_organized_files,
+            total_organized_bytes,
+            total_sessions_count,
+            categories_breakdown,
+            recent_activity_dates,
+        })
+    }
+
     /// Insere ou atualiza arquivos escaneados
     pub fn insert_scanned_files(&self, session_id: &str, files: &[crate::commands::scan::FileMeta]) -> anyhow::Result<Vec<String>> {
         let mut file_ids = Vec::with_capacity(files.len());

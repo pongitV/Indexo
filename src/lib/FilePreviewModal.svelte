@@ -88,19 +88,45 @@
         <div class="header-left">
           <div class="file-icon-box">
             {#if data?.file_type === "image"}
-              🖼️
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
             {:else if data?.file_type === "pdf"}
-              📕
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
             {:else if data?.file_type === "spreadsheet"}
-              📊
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="3" y1="15" x2="21" y2="15"></line>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+                <line x1="15" y1="3" x2="15" y2="21"></line>
+              </svg>
             {:else if data?.file_type === "audio"}
-              🎵
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
             {:else if data?.file_type === "video"}
-              🎬
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2">
+                <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+              </svg>
             {:else if data?.file_type === "code"}
-              💻
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="2">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
             {:else}
-              📄
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
             {/if}
           </div>
           <div class="header-titles">
@@ -112,10 +138,23 @@
                 <span class="meta-pill">{formatBytes(data.size_bytes)}</span>
                 <span class="meta-pill mime-pill">{data.mime_type}</span>
                 {#if data.dimensions}
-                  <span class="meta-pill highlight-pill">📐 {data.dimensions}</span>
+                  <span class="meta-pill highlight-pill">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    </svg>
+                    {data.dimensions}
+                  </span>
                 {/if}
                 {#if data.exif_date}
-                  <span class="meta-pill date-pill">📅 EXIF: {data.exif_date}</span>
+                  <span class="meta-pill date-pill">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="16" y1="2" x2="16" y2="6"></line>
+                      <line x1="8" y1="2" x2="8" y2="6"></line>
+                      <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    EXIF: {data.exif_date}
+                  </span>
                 {/if}
                 {#if data.line_count}
                   <span class="meta-pill">{data.line_count} linhas</span>
@@ -211,7 +250,13 @@
           <!-- Renderizador de Áudio -->
           {:else if data.file_type === "audio" && data.data_url}
             <div class="media-container audio-box">
-              <div class="media-big-icon">🎵</div>
+              <div class="media-big-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.5">
+                  <path d="M9 18V5l12-2v13"></path>
+                  <circle cx="6" cy="18" r="3"></circle>
+                  <circle cx="18" cy="16" r="3"></circle>
+                </svg>
+              </div>
               <audio controls src={data.data_url} class="audio-control"></audio>
             </div>
 
@@ -262,9 +307,16 @@
                 <span class="text-info-badge">{data.file_type === "code" ? "Código Fonte" : "Texto / Documento"}</span>
                 <button class="copy-btn" on:click={handleCopyText}>
                   {#if copySuccess}
-                    ✓ Copiado!
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Copiado!
                   {:else}
-                    📋 Copiar Texto
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    Copiar Texto
                   {/if}
                 </button>
               </div>
@@ -276,7 +328,13 @@
           <!-- Formato Binário / Sem preview direto -->
           {:else}
             <div class="binary-fallback">
-              <div class="binary-icon">📦</div>
+              <div class="binary-icon">
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <polyline points="21 8 21 21 3 21 3 8"></polyline>
+                  <rect x="1" y="3" width="22" height="5"></rect>
+                  <line x1="10" y1="12" x2="14" y2="12"></line>
+                </svg>
+              </div>
               <h3>Formato Binário ou Arquivo de Grande Porte</h3>
               <p>Este arquivo não possui visualização de texto direto integrada.</p>
               <button class="action-btn primary-action large" on:click={() => onOpenWithDefaultApp(data.path)}>

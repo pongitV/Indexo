@@ -45,16 +45,16 @@
     }
   }
 
-  function getAuthorBadge(changedBy: string): { label: string; icon: string; className: string } {
+  function getAuthorBadge(changedBy: string): { label: string; className: string } {
     switch (changedBy) {
       case "user":
-        return { label: "Usuário", icon: "👤", className: "badge-user" };
+        return { label: "Usuário", className: "badge-user" };
       case "ai_refinement":
-        return { label: "Refinamento IA", icon: "🤖", className: "badge-ai" };
+        return { label: "Refinamento IA", className: "badge-ai" };
       case "merge":
-        return { label: "Fusão de Tags", icon: "🔄", className: "badge-merge" };
+        return { label: "Fusão de Tags", className: "badge-merge" };
       default:
-        return { label: "Sistema", icon: "⚙️", className: "badge-auto" };
+        return { label: "Sistema", className: "badge-auto" };
     }
   }
 </script>
@@ -72,7 +72,10 @@
       <div class="modal-header-row">
         <div class="header-title-box">
           <div class="title-with-pill">
-            <span class="history-icon-badge">🕒</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="history-icon-svg">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
             <h2>Histórico de Mudanças</h2>
             {#if categoryColor}
               <span class="color-indicator" style="background: {categoryColor};"></span>
@@ -125,7 +128,6 @@
                   <div class="timeline-content-card">
                     <div class="timeline-card-header">
                       <div class="author-tag {badge.className}">
-                        <span>{badge.icon}</span>
                         <span>{badge.label}</span>
                       </div>
                       <time class="timeline-timestamp">{formatDateTime(item.changed_at)}</time>

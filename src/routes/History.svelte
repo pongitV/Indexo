@@ -5,10 +5,12 @@
     getOrganizationHistory,
     undoSession,
     openInExplorer,
+    getStorageAnalytics,
     type OrganizationSessionSummary,
     type SessionFileInfo,
     type SessionCategoryInfo,
     type SessionRenameInfo,
+    type StorageAnalytics,
   } from "../lib/api";
   import FileTreeNode, { type TreeNodeData } from "../lib/FileTreeNode.svelte";
   import { currentView, showToast } from "../lib/stores";
@@ -16,6 +18,23 @@
   let sessions: OrganizationSessionSummary[] = [];
   let isLoading: boolean = true;
   let searchQuery: string = "";
+
+  // Storage Analytics Modal state
+  let showAnalyticsModal: boolean = false;
+  let storageAnalytics: StorageAnalytics | null = null;
+  let isLoadingAnalytics: boolean = false;
+
+  async function openAnalyticsModal() {
+    showAnalyticsModal = true;
+    isLoadingAnalytics = true;
+    try {
+      storageAnalytics = await getStorageAnalytics();
+    } catch (e: any) {
+      showToast("Erro ao carregar estatísticas: " + e, "error");
+    } finally {
+      isLoadingAnalytics = false;
+    }
+  }
 
   // Session active tab: map from session_id to active tab
   // tab options: 'tree' | 'categories' | 'tags' | 'moves' | 'renames'
@@ -354,7 +373,10 @@
   <div class="history-header">
     <div class="header-titles">
       <div class="title-with-badge">
-        <span class="history-main-icon">📜</span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="history-main-icon">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
         <h1>Histórico de Organizações</h1>
         <span class="history-count-badge">{sessions.length}</span>
       </div>
@@ -364,6 +386,20 @@
     </div>
 
     <div class="header-controls">
+      <!-- Botão de Estatísticas & Armazenamento -->
+      <button
+        class="analytics-btn"
+        title="Painel de Estatísticas de Armazenamento"
+        on:click={openAnalyticsModal}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="20" x2="18" y2="10"></line>
+          <line x1="12" y1="20" x2="12" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="14"></line>
+        </svg>
+        <span>Estatísticas & Armazenamento</span>
+      </button>
+
       <!-- Botão Global de Expandir/Recolher Sessões -->
       <button
         class="toggle-all-sessions-btn"
@@ -431,7 +467,7 @@
             Quando você organizar pastas e arquivos no Indexo, o registro completo com tags e histórico de movimentações ficará disponível aqui.
           </p>
           <button class="primary-btn" on:click={() => currentView.set("folder-select")}>
-            Selecionar Pasta para Organizar
+            Organizar Minha Primeira Pasta
           </button>
         {/if}
       </div>
@@ -439,14 +475,14 @@
       <div class="sessions-list">
         {#each filteredSessions as session (session.session_id)}
           {@const isExpanded = sessionExpanded[session.session_id] ?? false}
-          {@const currentTab = sessionTabs[session.session_id] || (session.files_moved_count > 0 ? "moves" : "tree")}
-          {@const isAllUndone = session.files_moved_count > 0 && session.undone_count === session.files_moved_count}
-          {@const isPartialUndone = session.undone_count > 0 && session.undone_count < session.files_moved_count}
+          {@const currentTab = sessionTabs[session.session_id] || "tree"}
+          {@const isAllUndone = session.files_moved_count > 0 && session.undone_count >= session.files_moved_count}
+          {@const isPartialUndone = session.undone_count > 0 && !isAllUndone}
 
-          <div class="session-card" class:is-undone={isAllUndone}>
-            <!-- Top Card Bar -->
+          <div class="session-card glass-panel" class:expanded={isExpanded}>
+            <!-- Session Summary Header (Clicking expands/collapses the whole session) -->
             <div
-              class="session-card-header"
+              class="session-header-row"
               role="button"
               tabindex="0"
               on:click={() => toggleExpand(session.session_id)}
@@ -454,7 +490,9 @@
             >
               <div class="session-main-info">
                 <div class="folder-title-row">
-                  <span class="folder-icon">📁</span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="folder-icon-svg">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  </svg>
                   <span class="folder-path" title={session.root_path}>{session.root_path}</span>
                   <button
                     class="icon-action-btn"
@@ -470,15 +508,28 @@
                 </div>
 
                 <div class="session-meta-row">
-                  <span class="meta-time">🕒 {formatDateTime(session.started_at)}</span>
+                  <span class="meta-time">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    {formatDateTime(session.started_at)}
+                  </span>
                   <span class="meta-separator">•</span>
                   <span class="meta-files">
-                    📄 {session.files.length} {session.files.length === 1 ? "arquivo escaneado" : "arquivos escaneados"}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    </svg>
+                    {session.files.length} {session.files.length === 1 ? "arquivo escaneado" : "arquivos escaneados"}
                   </span>
                   {#if session.files_moved_count > 0}
                     <span class="meta-separator">•</span>
                     <span class="meta-files moved-count">
-                      📦 {session.files_moved_count} {session.files_moved_count === 1 ? "movido" : "movidos"}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="21 8 21 21 3 21 3 8"></polyline>
+                        <rect x="1" y="3" width="22" height="5"></rect>
+                      </svg>
+                      {session.files_moved_count} {session.files_moved_count === 1 ? "movido" : "movidos"}
                     </span>
                   {/if}
                 </div>
@@ -549,14 +600,19 @@
               </div>
             </div>
 
-            <!-- Session Navigation Tabs Bar (3 botões obrigatórios + 4º se movido + 5º renomeações) -->
+            <!-- Session Navigation Tabs Bar -->
             <div class="session-tabs-bar">
               <button
                 class="session-tab-btn"
                 class:active={currentTab === "tree" && isExpanded}
                 on:click={() => setTab(session.session_id, "tree")}
               >
-                <span>🌳</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="6" y1="3" x2="6" y2="15"></line>
+                  <circle cx="18" cy="6" r="3"></circle>
+                  <circle cx="6" cy="18" r="3"></circle>
+                  <path d="M18 9a9 9 0 0 1-9 9"></path>
+                </svg>
                 <span>Árvore Navegável</span>
                 <span class="tab-badge">{session.files.length}</span>
               </button>
@@ -566,7 +622,9 @@
                 class:active={currentTab === "categories" && isExpanded}
                 on:click={() => setTab(session.session_id, "categories")}
               >
-                <span>📁</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
                 <span>Categorias</span>
                 <span class="tab-badge">{session.categories_assigned.length}</span>
               </button>
@@ -576,7 +634,10 @@
                 class:active={currentTab === "tags" && isExpanded}
                 on:click={() => setTab(session.session_id, "tags")}
               >
-                <span>🏷️</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
                 <span>Tags</span>
                 <span class="tab-badge">{session.categories_assigned.length}</span>
               </button>
@@ -587,7 +648,10 @@
                   class:active={currentTab === "moves" && isExpanded}
                   on:click={() => setTab(session.session_id, "moves")}
                 >
-                  <span>📦</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="21 8 21 21 3 21 3 8"></polyline>
+                    <rect x="1" y="3" width="22" height="5"></rect>
+                  </svg>
                   <span>Arquivos Movidos</span>
                   <span class="tab-badge">{session.moves.length}</span>
                 </button>
@@ -598,7 +662,10 @@
                 class:active={currentTab === "renames" && isExpanded}
                 on:click={() => setTab(session.session_id, "renames")}
               >
-                <span>✏️</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
                 <span>Nomes Alterados</span>
                 <span class="tab-badge">{session.renames.length}</span>
               </button>
@@ -618,14 +685,11 @@
                       <span class="tab-info-text">
                         Navegue lado a lado pela estrutura de pastas original e pela estrutura sugerida pelo Indexo:
                       </span>
-
-                      <div class="dual-tree-controls">
+                      <div class="tree-expand-controls">
                         <button
-                          class="tree-action-btn"
-                          title="Expandir todas as pastas de ambas as colunas"
-                          on:click={() => {
-                            expandAllSessionTree(session.session_id, [...beforeTree, ...afterTree]);
-                          }}
+                          class="mini-control-btn"
+                          title="Expandir todas as pastas da sessão"
+                          on:click={() => expandAllSessionFolders(session.session_id, beforeTree, afterTree)}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="7 13 12 18 17 13"></polyline>
@@ -634,15 +698,9 @@
                           Expandir Pastas
                         </button>
                         <button
-                          class="tree-action-btn"
+                          class="mini-control-btn"
                           title="Recolher todas as pastas"
-                          on:click={() => {
-                            sessionExpandedTrees[session.session_id] = new Set([
-                              `hist-before-root-${session.root_path}`,
-                              `hist-after-root-${session.root_path}`,
-                            ]);
-                            sessionExpandedTrees = { ...sessionExpandedTrees };
-                          }}
+                          on:click={() => collapseAllSessionFolders(session.session_id)}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="17 11 12 6 7 11"></polyline>
@@ -653,13 +711,14 @@
                       </div>
                     </div>
 
-                    <!-- Colunas Lado a Lado -->
-                    <div class="dual-tree-container">
-                      <!-- Coluna Esquerda: Estrutura Atual / Original -->
-                      <div class="tree-column-panel">
+                    <div class="dual-tree-columns-grid">
+                      <!-- Coluna Esquerda: Estrutura Original -->
+                      <div class="tree-column-panel original">
                         <div class="tree-column-header">
                           <div class="tree-col-title">
-                            <span class="tree-col-icon">📂</span>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tree-col-icon-svg">
+                              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                            </svg>
                             <span>Estrutura Original</span>
                           </div>
                           <span class="tree-col-meta">{session.files.length} arquivos</span>
@@ -682,7 +741,9 @@
                       <div class="tree-column-panel proposed">
                         <div class="tree-column-header">
                           <div class="tree-col-title">
-                            <span class="tree-col-icon">✨</span>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tree-col-icon-svg proposed">
+                              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                            </svg>
                             <span>Estrutura Proposta / Organizada</span>
                           </div>
                           <span class="tree-col-meta">{session.files.length} arquivos</span>
@@ -726,7 +787,14 @@
                               </span>
                             </div>
                             <div class="cat-card-bottom">
-                              <span class="cat-file-count">📊 {cat.file_count} {cat.file_count === 1 ? "arquivo" : "arquivos"}</span>
+                              <span class="cat-file-count">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                  <line x1="18" y1="20" x2="18" y2="10"></line>
+                                  <line x1="12" y1="20" x2="12" y2="4"></line>
+                                  <line x1="6" y1="20" x2="6" y2="14"></line>
+                                </svg>
+                                {cat.file_count} {cat.file_count === 1 ? "arquivo" : "arquivos"}
+                              </span>
                             </div>
                           </div>
                         {/each}
@@ -770,9 +838,14 @@
                         <div class="move-item-row" class:is-move-undone={move.undone === 1}>
                           <div class="move-icon">
                             {#if move.undone === 1}
-                              <span title="Revertido / Desfeito">↩️</span>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" title="Revertido / Desfeito">
+                                <polyline points="1 4 1 10 7 10"></polyline>
+                                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                              </svg>
                             {:else}
-                              <span title="Movido">📄</span>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" title="Movido">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                              </svg>
                             {/if}
                           </div>
                           <div class="move-paths">
@@ -909,6 +982,95 @@
         <button class="primary-btn undo-confirm-btn" on:click={handleConfirmUndo}>
           Sim, Desfazer e Mover de Volta
         </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Modal de Estatísticas e Análise de Armazenamento -->
+{#if showAnalyticsModal}
+  <div
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    on:click|self={() => (showAnalyticsModal = false)}
+    on:keydown={(e) => e.key === "Escape" && (showAnalyticsModal = false)}
+  >
+    <div class="modal-card analytics-modal-card">
+      <div class="modal-header-row">
+        <div class="modal-header-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="modal-icon-accent">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          <h2>Estatísticas & Armazenamento</h2>
+        </div>
+        <button class="close-btn" on:click={() => (showAnalyticsModal = false)}>✕</button>
+      </div>
+
+      {#if isLoadingAnalytics}
+        <div class="analytics-loading">
+          <div class="spinner"></div>
+          <span>Calculando métricas de armazenamento...</span>
+        </div>
+      {:else if storageAnalytics}
+        <div class="analytics-body">
+          <!-- Big KPI Metrics Cards -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <span class="kpi-value text-accent">{formatBytes(storageAnalytics.total_organized_bytes)}</span>
+              <span class="kpi-label">Espaço Total Organizado</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-value text-success">{storageAnalytics.total_organized_files}</span>
+              <span class="kpi-label">Arquivos Catalogados</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-value">{storageAnalytics.total_sessions_count}</span>
+              <span class="kpi-label">Sessões Realizadas</span>
+            </div>
+          </div>
+
+          <!-- Category Storage Breakdown Progress Meters -->
+          <div class="breakdown-section">
+            <span class="breakdown-title">Distribuição de Espaço por Categoria:</span>
+
+            {#if storageAnalytics.categories_breakdown.length === 0}
+              <div class="empty-breakdown">Nenhum dado de categoria disponível ainda.</div>
+            {:else}
+              <div class="breakdown-bars-list">
+                {#each storageAnalytics.categories_breakdown as cat}
+                  <div class="breakdown-item">
+                    <div class="breakdown-header-row">
+                      <div class="breakdown-cat-name">
+                        <span class="cat-dot" style="background: {cat.category_color || 'var(--accent-primary)'};"></span>
+                        <span>{cat.category_name}</span>
+                        <span class="breakdown-file-count">({cat.total_files} {cat.total_files === 1 ? 'arq' : 'arqs'})</span>
+                      </div>
+                      <div class="breakdown-cat-stats">
+                        <span class="bytes-text">{formatBytes(cat.total_bytes)}</span>
+                        <span class="percentage-badge">{cat.percentage.toFixed(1)}%</span>
+                      </div>
+                    </div>
+
+                    <div class="progress-track">
+                      <div
+                        class="progress-fill"
+                        style="width: {Math.max(2, cat.percentage)}%; background: {cat.category_color || 'var(--accent-primary)'};"
+                      ></div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
+      <div class="modal-actions">
+        <button class="secondary-btn" on:click={() => (showAnalyticsModal = false)}>Fechar</button>
       </div>
     </div>
   </div>
@@ -1148,22 +1310,29 @@
     opacity: 0.8;
   }
 
+  .session-header-row,
   .session-card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem;
-    gap: 1rem;
+    padding: 1.15rem 1.4rem;
+    gap: 1.25rem;
     flex-wrap: wrap;
     background: var(--bg-secondary);
     cursor: pointer;
     user-select: none;
+    transition: background 120ms ease;
+  }
+
+  .session-header-row:hover,
+  .session-card-header:hover {
+    background: var(--bg-hover);
   }
 
   .session-main-info {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.45rem;
     min-width: 0;
     flex: 1;
   }
@@ -1171,8 +1340,13 @@
   .folder-title-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.65rem;
     min-width: 0;
+  }
+
+  .folder-icon-svg {
+    color: var(--accent-primary);
+    flex-shrink: 0;
   }
 
   .folder-icon {
@@ -1180,13 +1354,13 @@
   }
 
   .folder-path {
-    font-size: 0.95rem;
+    font-size: 0.96rem;
     font-weight: 700;
     color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 550px;
+    max-width: 600px;
     font-family: var(--font-mono);
   }
 
@@ -1195,8 +1369,11 @@
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 0.2rem 0.35rem;
+    padding: 0.25rem 0.4rem;
     border-radius: var(--radius-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transition: all 120ms ease;
   }
 
@@ -1208,9 +1385,17 @@
   .session-meta-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
+    gap: 0.65rem;
+    font-size: 0.82rem;
     color: var(--text-muted);
+    flex-wrap: wrap;
+  }
+
+  .meta-time,
+  .meta-files {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
   }
 
   .moved-count {
@@ -1305,8 +1490,8 @@
   .session-tabs-bar {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 1rem;
+    gap: 0.5rem;
+    padding: 0.5rem 1.4rem;
     background: var(--bg-primary);
     border-top: 1px solid var(--border-subtle);
     border-bottom: 1px solid var(--border-subtle);
@@ -1317,14 +1502,14 @@
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
-    padding: 0.35rem 0.65rem;
-    font-size: 0.8rem;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.82rem;
     font-weight: 600;
     color: var(--text-muted);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.45rem;
     transition: all 120ms ease;
     white-space: nowrap;
   }
@@ -1356,7 +1541,7 @@
 
   /* Tab Body Container */
   .session-tab-body {
-    padding: 1rem 1.25rem;
+    padding: 1.25rem 1.4rem;
     background: var(--bg-primary);
     animation: fadeIn 150ms ease-out;
   }
@@ -1374,7 +1559,7 @@
   .dual-tree-tab-content {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.85rem;
   }
 
   .dual-tree-header-row {
@@ -1385,42 +1570,47 @@
     flex-wrap: wrap;
   }
 
-  .dual-tree-controls {
+  .dual-tree-controls,
+  .tree-expand-controls {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.5rem;
   }
 
+  .mini-control-btn,
   .tree-action-btn {
     background: var(--bg-secondary);
     border: 1px solid var(--border-medium);
-    border-radius: var(--radius-sm);
-    padding: 0.25rem 0.55rem;
-    font-size: 0.76rem;
+    border-radius: var(--radius-md);
+    padding: 0.35rem 0.65rem;
+    font-size: 0.78rem;
     color: var(--text-muted);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.4rem;
     font-weight: 600;
     transition: all 120ms ease;
   }
 
+  .mini-control-btn:hover,
   .tree-action-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
     border-color: var(--border-strong, #475569);
   }
 
+  .dual-tree-columns-grid,
   .dual-tree-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
     min-height: 280px;
-    max-height: 480px;
+    max-height: 500px;
   }
 
   @media (max-width: 820px) {
+    .dual-tree-columns-grid,
     .dual-tree-container {
       grid-template-columns: 1fr;
     }
@@ -1443,7 +1633,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.55rem 0.85rem;
+    padding: 0.65rem 1rem;
     background: rgba(0, 0, 0, 0.08);
     border-bottom: 1px solid var(--border-subtle);
     font-size: 0.82rem;
@@ -1454,11 +1644,16 @@
   .tree-col-title {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.45rem;
   }
 
-  .tree-col-icon {
-    font-size: 0.95rem;
+  .tree-col-icon-svg {
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .tree-col-icon-svg.proposed {
+    color: var(--accent-primary);
   }
 
   .tree-col-meta {
@@ -1470,7 +1665,7 @@
   .tree-column-scroll {
     flex: 1;
     overflow-y: auto;
-    padding: 0.5rem;
+    padding: 0.75rem;
     scrollbar-width: thin;
   }
 
@@ -1874,6 +2069,218 @@
     height: 12px;
     border: 2px solid rgba(239, 68, 68, 0.3);
     border-top-color: #ef4444;
+    border-radius: 50%;
+    animation: spin 800ms linear infinite;
+  }
+
+  .analytics-btn {
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: var(--accent-primary);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    transition: all 150ms ease;
+  }
+
+  .analytics-btn:hover {
+    background: rgba(59, 130, 246, 0.22);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
+  }
+
+  .analytics-modal-card {
+    max-width: 580px;
+    align-items: stretch;
+    text-align: left;
+  }
+
+  .modal-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .modal-header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-primary);
+  }
+
+  .modal-header-title h2 {
+    font-size: 1.15rem;
+    margin: 0;
+  }
+
+  .modal-icon-accent {
+    color: var(--accent-primary);
+  }
+
+  .close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    cursor: pointer;
+  }
+
+  .analytics-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    gap: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+  }
+
+  .analytics-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    width: 100%;
+  }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+  }
+
+  .kpi-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    text-align: center;
+  }
+
+  .kpi-value {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--text-primary);
+  }
+
+  .kpi-value.text-accent {
+    color: var(--accent-primary);
+  }
+
+  .kpi-value.text-success {
+    color: #10b981;
+  }
+
+  .kpi-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .breakdown-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .breakdown-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .breakdown-bars-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-right: 0.35rem;
+    scrollbar-width: thin;
+  }
+
+  .breakdown-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .breakdown-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.8rem;
+  }
+
+  .breakdown-cat-name {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .breakdown-file-count {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+  }
+
+  .breakdown-cat-stats {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .bytes-text {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 0.76rem;
+  }
+
+  .percentage-badge {
+    font-weight: 700;
+    font-size: 0.72rem;
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+    padding: 0.05rem 0.35rem;
+    border-radius: var(--radius-sm);
+  }
+
+  .progress-track {
+    height: 6px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width 300ms ease;
+  }
+
+  .empty-breakdown {
+    text-align: center;
+    padding: 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+
+  .spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid rgba(59, 130, 246, 0.2);
+    border-top-color: var(--accent-primary);
     border-radius: 50%;
     animation: spin 800ms linear infinite;
   }

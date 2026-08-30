@@ -1,19 +1,20 @@
 # Indexo — Intelligent Semantic File Organization System
 
 <p align="center">
-  <img src="src-tauri/icons/icon.png" width="128" height="128" alt="Indexo Logo">
+  <img src="assets/alexandria_mouse.gif" width="160" height="160" alt="Indexo Alexandria Icon">
 </p>
 
 <p align="center">
-  <b>Semantic, intelligent, portable, and 100% offline file organizer and indexer for Windows.</b><br>
-  Built with a high-performance architecture: <b>Native Rust (Tauri 2)</b> backend and <b>Svelte 5 (TypeScript)</b> frontend.
+  <b>“Index and organize like the library of Alexandria”</b><br>
+  Semantic, intelligent, deterministic, portable, and 100% offline file organizer, cataloger, and deduplicator for Windows.<br>
+  Built with <b>Native Rust (Tauri 2)</b> backend and <b>Svelte 5 (TypeScript)</b> frontend in the <b>Library of Alexandria & Flexoki</b> theme.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-blue.svg" alt="Platform">
   <img src="https://img.shields.io/badge/Backend-Rust%202021%20%7C%20Tauri%202-orange.svg" alt="Backend">
   <img src="https://img.shields.io/badge/Frontend-Svelte%205%20%7C%20TypeScript-red.svg" alt="Frontend">
-  <img src="https://img.shields.io/badge/Engine-OCR%20%2B%20384D%20Dense%20Neural%20Classifier-purple.svg" alt="Engine">
+  <img src="https://img.shields.io/badge/Theme-Alexandria%20%26%20Flexoki-amber.svg" alt="Theme">
   <img src="https://img.shields.io/badge/Privacy-100%25%20Offline%20%26%20Local-success.svg" alt="Privacy">
   <img src="https://img.shields.io/badge/License-GNU%20GPLv3-yellow.svg" alt="License">
 </p>
@@ -31,130 +32,115 @@
 
 - [About the Project](#about-the-project)
 - [Key Highlights](#key-highlights)
-- [3-Tier Semantic Classification Engine](#3-tier-semantic-classification-engine)
-- [System Architecture](#system-architecture)
+- [4-Tier Semantic Classification Pipeline](#4-tier-semantic-classification-pipeline)
+- [Core Features](#core-features)
+  - [1. Side-by-Side Organization & Preview](#1-side-by-side-organization--preview)
+  - [2. View-First Visual Deduplicator](#2-view-first-visual-deduplicator)
+  - [3. Custom, Default, and AI Rules Manager](#3-custom-default-and-ai-rules-manager)
+  - [4. Context-Aware Semantic Renamer](#4-context-aware-semantic-renamer)
+  - [5. History, Comparative Trees & Storage Analytics](#5-history-comparative-trees--storage-analytics)
+- [Library of Alexandria & Flexoki Theme](#library-of-alexandria--flexoki-theme)
 - [Complete Repository Structure](#complete-repository-structure)
-- [User Experience Flow (UI/UX)](#user-experience-flow-uiux)
 - [Getting Started & Development](#getting-started--development)
 - [Building the Standalone Portable Executable](#building-the-standalone-portable-executable)
-- [Development Roadmap](#development-roadmap)
 - [License](#license)
 
 ---
 
 ## About the Project
 
-**Indexo** is a semantic file organizer and classifier engineered to resolve chronic clutter across complex Windows directory structures (such as *Downloads*, *Documents*, *Desktop*, or scattered project folders).
+**Indexo** is a semantic file organizer and cataloger engineered to turn messy Windows directories (like *Downloads*, *Documents*, *Desktop*, or scattered project folders) into a pristine, deterministic personal archive.
 
-Unlike conventional file organizers that rely on fixed extensions or rigid manual rules, Indexo operates under the principle of **adaptive intelligence without predefined taxonomies (zero-hardcode)**: it analyzes the genuine content of files (inspecting *magic numbers*, performing native OCR on images, extracting text from PDFs/Office files, and evaluating dense vector semantic similarity) and dynamically clusters files into natural, human-readable categories.
+Inspired by the classical **Library of Alexandria** and Steph Ango's **Flexoki** palette, Indexo operates under the principle of **adaptive intelligence without rigid hardcoding**: it inspects true file content via *magic bytes*, native OCR, and semantic context, suggesting structured directory trees without moving anything without explicit user approval.
 
 ### Core Principles:
-1. **100% Offline & Private**: Zero user data, metadata, or telemetry ever leaves your machine.
-2. **High Performance & Low Memory Footprint**: Backend compiled in **Rust 2021** with true multithreading via `rayon`, scanning thousands of files seamlessly with minimal RAM consumption.
-3. **Modern & Reactive UI**: Frontend built with **Svelte 5** and **TypeScript**, providing a fluid desktop experience, theme switching (dark/light), and internationalization (pt-BR / en-US).
-4. **Absolute Safety (Zero Data Loss Risk)**: Files are never deleted automatically — only moved after interactive side-by-side visual inspection, accompanied by a transactional log for **1-click undo**.
+1. **100% Offline & Private**: Zero background services, zero trackers, zero telemetry. Everything runs on-demand locally on your machine.
+2. **High-Performance Rust Backend**: Built in **Rust 2021** with native `rayon` parallelism, processing tens of thousands of files with instant response times and minimal RAM usage.
+3. **Reactive Svelte 5 Frontend**: Modern desktop interface with compact dropdown menus, keyboard shortcuts, multi-selection, and fluid transitions.
+4. **Absolute Safety (Zero Data Loss)**: Transactions are fully auditable with **1-click undo**. The deduplicator sends items to the Windows Recycle Bin by default.
 
 ---
 
 ## Key Highlights
 
-* **Native Windows OCR (Windows.Media.Ocr)**: Optical character recognition integrated via Windows 10/11 native APIs, instantly extracting text from screenshots, receipt photos, tax invoices, and scanned documents (`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.tiff`) without external binary dependencies or large model downloads.
-* **384-Dimensional Dense Neural Embeddings**: Continuous 384D semantic vector representations combining subword hyperdimensional projections with 64 latent topical concept anchors and adaptive centroid clustering.
-* **Zero-Hardcode & Dynamic Categorization**: No static factory taxonomies. Categories and tags are synthesized in real-time based on the user's actual files.
-* **Intelligent Hierarchical Subcategories**: When 2 or more files in the same category share an entity (games like *Zelda*, *Minecraft*; companies like *Enel*, *Nubank*; or subjects like *Beach*, *Projects*), Indexo automatically creates deep subfolders (e.g., `Images/Games/Zelda` or `Bills & Invoices/Enel`).
-* **Detection & Preservation of Organized Folders**: Subfolders with existing coherent structure (such as `Vacation Photos/Beach/`) are automatically detected, preserved by default with an SVG review indicator in preview, and offer quick toggle options to keep or reorganize.
-* **Batch Smart Renamer**: Standardizes and cleans file names in batch, removing camera/app noise prefixes (`IMG_`, `WA_`, `Scan_`), extracting formatted dates, inheriting subcategory entities, and preserving numerical series sequences (`_01`, `_02`).
-* **Genuine Content Inspection**: Never trusts declared file extensions blindly. Identifies authentic formats via header bytes (*magic numbers*) and extracts text from PDF, DOCX, XLSX, TXT, MD, and CSV.
-* **Side-by-Side Visual Preview (Before vs. After)**: Clear visual comparison between current directory trees and proposed multi-level target paths before any filesystem operation occurs.
-* **Incremental Learning via Manual Corrections**: Correct any classification with right-click context actions (change category, create new tag, create permanent rule). Every correction updates the local SQLite profile (`data/profile.db`), enhancing future classification accuracy.
-* **Tag & Category Manager**: Dedicated interface to create, rename, merge, audit, and purge automated or unused tags/categories with SQLite `VACUUM` optimization.
-* **Full Session Reversion (Undo)**: Transactional audit log allows users to revert any completed organization or renaming session with 1-click precision.
-* **100% Portable (.exe Standalone)**: Operates standalone without installers, registry keys, or `%APPDATA%` pollution. Moving the application folder preserves the entire learned profile.
+* **Native OCR for Images & Scans (`Windows.Media.Ocr`)**: Reads text from receipts, screenshots, and photos without third-party downloads or external APIs.
+* **Pre-Organized Folder Detection**: Identifies structured folders during the initial scan pass and preserves them untouched to prevent category pollution.
+* **3-Stage Visual Deduplicator (View-First)**: Fast hash-based duplicate detector (Size $\rightarrow$ 64KB Prefix $\rightarrow$ Full SHA-256) with side-by-side visual comparison, image previews, and Recycle Bin safety.
+* **Rule Engine (Custom, Default & AI)**: Visual conditional builder (*IF [field] [operator] [value] THEN [action]*), built-in heuristic inspector, and catalog of AI-learned rules.
+* **History & Storage Analytics Dashboard**: Chronological audit trail with side-by-side comparative trees, space-saved counters, and category volume breakdown.
+* **Library of Alexandria & Flexoki Palette**: Authentic **antique book-page beige** in light mode and ink-and-charcoal in dark mode with Terracotta and Amber accents.
 
 ---
 
-## 3-Tier Semantic Classification Engine
-
-Indexo evaluates every file through a 3-tier hierarchical cascaded pipeline:
+## 4-Tier Semantic Classification Pipeline
 
 ```mermaid
 flowchart TD
-    A["Selected File"] --> P{"Already in Organized Folder?"}
-    P -->|"Yes"| PRESERV["Preserve Original Structure (Review Badge)"]
-    P -->|"No"| B["Tier 1: Fast Heuristics & Real Bytes"]
-    B --> Z{"Confidence >= 80%?"}
-    Z -->|"Yes"| R1["Instant Match (0ms)"]
-    Z -->|"No"| C["Tier 2: Native OCR, Text Extraction & 384D Embeddings"]
-    C --> Y{"Confidence >= 70%?"}
-    Y -->|"Yes"| R2["Semantic Match (~5ms)"]
-    Y -->|"No"| D["Tier 3: Local SLM Reasoning"]
-    D --> R3["Deep Reasoning Classification"]
-    R1 --> SUB["Subcategories Engine (Games / Companies / Subjects)"]
+    A["Selected File"] --> P0{"Already in Organized Folder?"}
+    P0 -->|"Yes"| KEEP["Preserve Original Structure (Skip Classification)"]
+    P0 -->|"No"| P05{"Matches Custom Rule?"}
+    P05 -->|"Yes"| R05["Priority 0.5: Apply Custom Rule Category/Tag"]
+    P05 -->|"No"| P1{"Learned AI Rule Match?"}
+    P1 -->|"Yes"| R1["Priority 1: Apply Learned User Pattern"]
+    P1 -->|"No"| P2["Priority 2: Magic Bytes & Heuristics"]
+    P2 --> Z{"Confidence >= 80%?"}
+    Z -->|"Yes"| R2["Direct Classification (0ms)"]
+    Z -->|"No"| P3["Priority 3: Native OCR + 384D Dense Embeddings"]
+    P3 --> SUB["Hierarchical Subcategory Engine"]
+    R05 --> SUB
+    R1 --> SUB
     R2 --> SUB
-    R3 --> SUB
 ```
 
-1. **Tier 1 — Fast Heuristics and Magic Numbers (`0ms`)**:
-   - Real MIME-type detection using file signatures via `infer`.
-   - Matching against the local database of user-defined rules and historical corrections (`profile.db`).
-   - Direct resolution for media formats and installers.
-2. **Tier 2 — Native OCR, Text Extraction & 384D Embeddings (`~5ms`)**:
-   - High-speed native OCR via `Windows.Media.Ocr` for screenshots, receipt photos, and scanned documents.
-   - Text extraction from structured documents (`pdf-extract`, `docx-rs`, `calamine`).
-   - Dense 384-dimensional semantic embeddings with 64 bilingual latent topical anchors and adaptive centroid clustering.
-3. **Tier 3 — Deep Reasoning with Local SLM**:
-   - Semantic category naming synthesis with noise filters and clean fallback to *"Miscellaneous Documents"*.
-4. **Hierarchical Subcategories Engine**:
-   - Automatically groups related files inside the same primary category into multi-level subdirectories (`Images/Games/Zelda`, `Bills & Invoices/Enel`).
+1. **Priority 0 — Pre-Organized Folders**: Identifies structured folders and preserves their original layout.
+2. **Priority 0.5 — User Custom Rules**: Evaluates user-defined conditional rules created in the Rule Builder before any heuristics.
+3. **Priority 1 — AI-Learned Rules**: Checks user correction history stored in local SQLite (`data/profile.db`).
+4. **Priority 2 — Native Heuristics & Magic Numbers**: Inspects actual file header bytes (`infer`), detecting media, documents, archives, and code.
+5. **Priority 3 — Native OCR & Dense Embeddings**: Extracts text via `Windows.Media.Ocr`, `pdf-extract`, and `docx-rs` for semantic clustering.
 
 ---
 
-## System Architecture
+## Core Features
 
-```mermaid
-flowchart TB
-    subgraph FE ["Frontend (Svelte 5 / TypeScript)"]
-        UI["App.svelte (Navigation & Views)"]
-        ST["Reactive Stores (Global State)"]
-        TREE["FileTreeNode (Interactive Tree)"]
-    end
+### 1. Side-by-Side Organization & Preview
+* Drag & drop any directory or use the folder picker.
+* Compare **Original vs Proposed** structures side-by-side before executing disk operations.
+* Multi-selection (`Ctrl+Click`, `Shift+Click`) with a floating batch action bar for changing categories, tags, or skipping files.
 
-    subgraph IPC ["IPC Layer (Tauri 2 Bridge)"]
-        CMD_SCAN["scan_folder / scan_specific_files"]
-        CMD_CLASS["classify_scanned_files"]
-        CMD_APPLY["apply_organization / undo_last_apply"]
-        CMD_RENAME["suggest_semantic_names / apply_renames"]
-        CMD_PROF["profile / rules / maintenance"]
-    end
+### 2. View-First Visual Deduplicator
+* 3-stage hashing (Size $\rightarrow$ 64KB prefix $\rightarrow$ SHA-256).
+* Side-by-side comparison cards with thumbnail previews, pixel resolution, timestamps, and path info.
+* Smart keep suggestions (*Cleanest name*, *Highest resolution*, *Newest*).
+* Safe deletion via **Windows Recycle Bin** or optional permanent purge.
 
-    subgraph BE ["Native Backend (Rust 2021)"]
-        SCANNER["Parallel Scanner (walkdir + rayon)"]
-        EXTRACT["Text Extraction (PDF / DOCX / XLSX)"]
-        ENGINE["Semantic Classifier & Subcategories"]
-        RENAMER["Smart Renamer Engine"]
-        MOVER["Safe File Operations & Audit Log"]
-        DB[("Local SQLite (data/profile.db)")]
-    end
+### 3. Custom, Default, and AI Rules Manager
+* Visual condition builder (*Equal to*, *Contains*, *Starts with*, *Ends with*, *Greater than*, *Less than*).
+* View all system built-in classification heuristics.
+* Inspect and prune rules learned automatically from manual user overrides.
 
-    UI --> ST
-    ST --> CMD_SCAN
-    ST --> CMD_CLASS
-    ST --> CMD_RENAME
-    TREE --> CMD_APPLY
-    UI --> CMD_PROF
+### 4. Context-Aware Semantic Renamer
+* Batch sanitization removing camera/messenger noise (`IMG_`, `WA_`, `Scan_`).
+* Standardized names with formatted dates, category context, and sequence counters.
+* Full renaming history with 1-click restore.
 
-    CMD_SCAN --> SCANNER
-    CMD_CLASS --> EXTRACT
-    EXTRACT --> ENGINE
-    CMD_CLASS --> ENGINE
-    CMD_RENAME --> RENAMER
-    CMD_APPLY --> MOVER
-    CMD_PROF --> DB
+### 5. History, Comparative Trees & Storage Analytics
+* Transaction log of all completed organization and renaming sessions.
+* 3 interactive views per session: **Proposed Tree**, **Created Categories**, **Created Tags**, and **Moved Files**.
+* **Storage & Analytics Widget**: Total space organized, total cataloged files, and proportional volume breakdown.
 
-    ENGINE --> DB
-    MOVER --> DB
-    SCANNER --> DB
-```
+---
+
+## Library of Alexandria & Flexoki Theme
+
+* **Day Mode (*Alexandria Day*)**:
+  - Background: **Antique Book-Page Beige** (`#EFE5D3` / `#E4D8C2`).
+  - Typography: **Deep Charcoal & Sepia Ink** (`#211912`).
+  - Accents: **Terracotta Bookbinder Leather** (`#BC5215`).
+* **Night Mode (*Alexandria Night*)**:
+  - Background: **Warm Charcoal & Ink** (`#100F0F` / `#1C1B1A`).
+  - Typography: **Soft Parchment Cream** (`#CECDC3`).
+  - Accents: **Luminous Amber & Gold** (`#DA702C`).
+* **Alexandria Easter Egg**: Click the Indexo logo in the top menu to view the animated mouse greeting and philosophy modal.
 
 ---
 
@@ -162,104 +148,50 @@ flowchart TB
 
 ```text
 Indexo/
-├── index.html                      # Frontend HTML entrypoint for Vite
-├── package.json                    # Svelte 5 / Tauri frontend dependencies and scripts
-├── package-lock.json               # Node.js lockfile
-├── tsconfig.json                   # TypeScript compiler configuration
-├── vite.config.ts                  # Vite bundler and Svelte plugin configuration
-├── README.md                       # Project overview and user guide (Portuguese)
-├── README_EN.md                    # Project overview and user guide (English)
-├── LICENSE                         # GNU General Public License v3.0
-├── .gitignore                      # Git exclusion rules
-├── Indexo.exe                      # Standalone compiled portable executable
+├── index.html                      # Frontend HTML entry point with Alexandria SVG favicon
+├── package.json                    # Vite & Tauri frontend dependencies
+├── tsconfig.json                   # TypeScript configuration
+├── vite.config.ts                  # Vite build configuration
+├── README.md                       # Portuguese documentation
+├── README_EN.md                    # English documentation
+├── LICENSE                         # GNU GPLv3 License
 │
-├── src/                            # Svelte 5 + TypeScript Frontend
-│   ├── main.ts                     # Svelte application initialization
-│   ├── App.svelte                  # Root component and navigation orchestrator
-│   │
-│   ├── lib/                        # Shared libraries and visual modules
-│   │   ├── api.ts                  # Typed client wrappers for Tauri backend commands
-│   │   ├── stores.ts               # Global reactive state management (Svelte stores)
-│   │   ├── FileTreeNode.svelte     # Visual directory tree with nested subfolders and SVG badges
-│   │   └── i18n/                   # Translation dictionaries
-│   │       ├── pt-BR.json          # Brazilian Portuguese
-│   │       └── en-US.json          # American English
-│   │
-│   ├── routes/                     # Screen views and application flows
-│   │   ├── FolderSelect.svelte     # Landing view with folder/files selection & drag-and-drop
-│   │   ├── Scanning.svelte         # Directory scan and content extraction progress view
-│   │   ├── Preview.svelte          # Side-by-side (Before vs. After) multi-level preview tree
-│   │   ├── Renamer.svelte          # Batch smart renamer with semantic presets
-│   │   ├── TagManager.svelte       # Tag and learned rule management
-│   │   ├── CategoryManager.svelte  # Category management and purge maintenance view
-│   │   └── Settings.svelte         # Settings panel (theme, language, thresholds)
-│   │
-│   ├── i18n/                       # Internationalization setup (svelte-i18n)
-│   │   └── setup.ts                # Locale detection and dictionary loader
-│   │
-│   └── styles/                     # Global styling
-│       └── theme.css               # Design system, color tokens, and dark/light themes
+├── assets/                         # Media assets
+│   └── alexandria_mouse.gif        # Library of Alexandria animated logo
 │
-├── src-tauri/                      # Native Rust Backend (Tauri 2)
-│   ├── Cargo.toml                  # Rust dependencies (tauri, tokio, rusqlite, rayon, infer)
-│   ├── Cargo.lock                  # Rust dependency lockfile
-│   ├── build.rs                    # Tauri build hook script
-│   ├── tauri.conf.json             # Tauri 2 runtime and window configuration
+├── src/                            # Frontend (Svelte 5 + TypeScript)
+│   ├── App.svelte                  # Route orchestrator, dropdown navigation & Easter egg
+│   ├── routes/
+│   │   ├── FolderSelect.svelte     # Clean directory picker and rename toggle
+│   │   ├── Scanning.svelte         # Real-time scan progress feedback
+│   │   ├── Preview.svelte          # Side-by-side comparative tree & batch action bar
+│   │   ├── Renamer.svelte          # Intelligent batch renamer
+│   │   ├── Duplicates.svelte       # View-first visual deduplicator
+│   │   ├── RulesManager.svelte     # Custom, default & AI rule builder
+│   │   ├── History.svelte          # Session history, comparative trees & analytics
+│   │   ├── TagManager.svelte       # Semantic tag management
+│   │   ├── CategoryManager.svelte  # Category & destination directory management
+│   │   └── Settings.svelte         # Theme, language & maintenance settings
 │   │
-│   ├── src/                        # Rust source code
-│   │   ├── main.rs                 # Executable entrypoint and command registry
-│   │   │
-│   │   ├── commands/               # Handlers for frontend IPC invocations
-│   │   │   ├── mod.rs              # Command module exports
-│   │   │   ├── scan.rs             # Recursive directory and specific files scanner
-│   │   │   ├── classify.rs         # Batch semantic classifier and tier routing
-│   │   │   ├── apply.rs            # Atomic file mover and undo rollback log
-│   │   │   ├── rename.rs           # Batch semantic rename suggestions and execution
-│   │   │   ├── profile.rs          # Category/rule management and DB cleanup commands
-│   │   │   └── system.rs           # Windows File Explorer path integration
-│   │   │
-│   │   ├── engine/                 # Intelligence & classification engine core
-│   │   │   ├── mod.rs              # Pipeline orchestrator and unit tests
-│   │   │   ├── heuristics.rs       # Tier 1: Fast heuristics and organized folder detection
-│   │   │   ├── ocr.rs              # High-speed native OCR via Windows.Media.Ocr
-│   │   │   ├── content_extract.rs  # Secure text extraction from PDF, DOCX, XLSX, and OCR dispatcher
-│   │   │   ├── embeddings.rs       # Tier 2: 384D dense neural embeddings with 64 anchors and centroids
-│   │   │   ├── subcategories.rs    # Hierarchical subcategories engine (games, companies, subjects)
-│   │   │   ├── llm_local.rs        # Tier 3: Semantic naming and binary noise filtering
-│   │   │   ├── renamer.rs          # Smart renamer engine and collision resolver
-│   │   │   └── rules.rs            # Dynamic rule synthesizer and evaluator
-│   │   │
-│   │   ├── fs_ops/                 # Safe filesystem operations
-│   │   │   ├── mod.rs              # Path validation and traversal prevention
-│   │   │   └── mover.rs            # Atomic safe move, collision handling, and rollback
-│   │   │
-│   │   └── db/                     # Local SQLite database layer
-│   │       ├── mod.rs              # Connections, maintenance queries, and transactions in profile.db
-│   │       ├── models.rs           # Data structures (Category, Rule, ActionLog, Session)
-│   │       └── schema.sql          # Relational database schema with indices
+│   ├── lib/
+│   │   ├── api.ts                  # Typed Tauri command bridge
+│   │   ├── stores.ts               # Global reactive state
+│   │   ├── FileTreeNode.svelte     # Interactive tree node component
+│   │   └── ...                     # Preview, history & audit modals
 │   │
-│   ├── capabilities/               # Security policies and permissions
-│   │   └── default.json            # Dialog, filesystem, and IPC capability grants
-│   │
-│   └── icons/                      # Application icons in multiple resolutions
-│       ├── icon.ico                # Windows executable icon
-│       ├── icon.png                # High-resolution standard icon
-│       └── ...                     # Multi-resolution icon assets
+│   └── styles/
+│       └── theme.css               # Library of Alexandria / Flexoki design tokens
 │
-└── data/                           # Local persistence directory (runtime created)
-    └── profile.db                  # Local SQLite user learning profile
+└── src-tauri/                      # Native backend (Rust 2021 / Tauri 2)
+    ├── Cargo.toml                  # Rust dependencies
+    ├── tauri.conf.json             # Tauri 2 configuration
+    ├── icons/                      # Multi-resolution icons (.ico, .png)
+    └── src/
+        ├── main.rs                 # Entry point & command registrations
+        ├── commands/               # Handlers for scan, classify, duplicates, rules, history
+        ├── engine/                 # 4-tier classifier, OCR, embeddings, duplicates engine
+        └── db/                     # Local SQLite layer (data/profile.db in WAL mode)
 ```
-
----
-
-## User Experience Flow (UI/UX)
-
-1. **Folder or File Selection**: Open the app and select or drag-and-drop folders or specific files.
-2. **Scanning & Extraction**: The native Rust engine scans directories in parallel, identifying *magic numbers* and extracting text in milliseconds with real-time feedback.
-3. **Interactive Multi-Level Preview**: Inspect the proposed **Before vs. After** reorganization tree with deep hierarchical subcategories and preserved folders.
-4. **Integrated Semantic Renaming**: With a single toggle, inspect and standardize file names with dates, categories, and subjects.
-5. **Safe Execution**: Click **Apply** to atomically organize files into clean categories with full transactional rollback logging.
-6. **1-Click Undo**: Revert the entire reorganization session at any time with the **Undo** button.
 
 ---
 
@@ -267,56 +199,39 @@ Indexo/
 
 ### Prerequisites
 * **Windows 10 or 11 (64-bit)**
-* **Rust Toolchain** (`rustc` and `cargo` installed via [rustup.rs](https://rustup.rs))
-* **Node.js 18+** and **npm** ([nodejs.org](https://nodejs.org))
+* **Rust Toolchain** (`rustc` & `cargo` via [rustup.rs](https://rustup.rs))
+* **Node.js 18+** & **npm** ([nodejs.org](https://nodejs.org))
 
-### 1. Clone the Repository
+### 1. Clone & Install
 
 ```powershell
 git clone https://github.com/pongitV/Indexo.git
 cd Indexo
-```
-
-### 2. Install Frontend Dependencies
-
-```powershell
 npm install
 ```
 
-### 3. Run in Development Mode
+### 2. Run in Development Mode
 
 ```powershell
 npm run tauri dev
 ```
 
-This launches the Vite development server with Hot Module Replacement (HMR) and connects it to the native Tauri Rust backend.
-
 ---
 
 ## Building the Standalone Portable Executable
 
-To compile the optimized release binary and package the standalone `.exe`:
+To compile the optimized standalone release executable:
 
 ```powershell
 npm run tauri build
 ```
 
-The self-contained standalone executable will be located at:
-`src-tauri/target/release/indexo.exe`
-
-> Simply copy `indexo.exe` to any folder or flash drive and run it directly.
-
----
-
-## Development Roadmap
-
-* **Phase 0**: Stack Foundation (Rust + Tauri 2 + Svelte 5 + SQLite `profile.db`).
-* **Phase 1**: Content extraction and 3-tier semantic classification engine.
-* **Phase 2**: Reactive UI, side-by-side preview tree, and user approval flows.
-* **Phase 3**: Safe physical mover, transactional rollback (Undo), and standalone packaging.
+Compiled binaries:
+* **Standalone Portable Executable**: `src-tauri/target/release/indexo.exe`
+* **NSIS Installer**: `src-tauri/target/release/bundle/nsis/Indexo_0.1.0_x64-setup.exe`
 
 ---
 
 ## License
 
-This project is free and open-source software, distributed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for more details.
+Distributed under the **GNU General Public License v3.0 (GPLv3)**. See [LICENSE](LICENSE) for details.

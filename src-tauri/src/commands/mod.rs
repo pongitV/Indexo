@@ -4,3 +4,6 @@ pub mod apply;
 pub mod profile;
 pub mod system;
 pub mod rename;
+pub mod duplicates;
+pub mod rules;
+

@@ -140,3 +140,90 @@ pub struct OrganizationSessionSummary {
     pub moves: Vec<MoveLogRecord>,
     pub renames: Vec<SessionRenameInfo>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomRule {
+    pub id: String,
+    pub name: String,
+    pub condition_field: String,    // 'extension' | 'filename_contains' | 'content_contains' | 'size_greater' | 'size_smaller'
+    pub condition_operator: String, // 'equals' | 'contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than'
+    pub condition_value: String,
+    pub action_type: String,        // 'move_category' | 'rename_pattern' | 'apply_tag'
+    pub action_value: String,
+    pub is_enabled: bool,
+    pub priority: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCustomRuleInput {
+    pub name: String,
+    pub condition_field: String,
+    pub condition_operator: String,
+    pub condition_value: String,
+    pub action_type: String,
+    pub action_value: String,
+    pub priority: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearnedRuleInfo {
+    pub id: String,
+    pub pattern_type: String,
+    pub pattern_value: String,
+    pub category_id: String,
+    pub category_name: String,
+    pub category_color: Option<String>,
+    pub confidence_weight: f64,
+    pub created_from: String,
+    pub hit_count: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageCategoryStat {
+    pub category_name: String,
+    pub category_color: Option<String>,
+    pub total_files: i64,
+    pub total_bytes: i64,
+    pub percentage: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageAnalytics {
+    pub total_organized_files: i64,
+    pub total_organized_bytes: i64,
+    pub total_sessions_count: i64,
+    pub categories_breakdown: Vec<StorageCategoryStat>,
+    pub recent_activity_dates: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateItem {
+    pub path: String,
+    pub filename: String,
+    pub size_bytes: u64,
+    pub modified_at: Option<String>,
+    pub resolution: Option<String>, // ex: "1920x1080" se imagem/vídeo
+    pub is_recommended_to_keep: bool,
+    pub is_selected_to_keep: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateGroup {
+    pub group_id: String,
+    pub hash: String,
+    pub size_bytes: u64,
+    pub items: Vec<DuplicateItem>,
+    pub potential_savings_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateResolveAction {
+    pub keep_path: String,
+    pub delete_or_move_paths: Vec<String>,
+    pub action_type: String, // 'trash' | 'delete' | 'archive_folder'
+    pub archive_folder_path: Option<String>,
+}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { locale, _ } from "svelte-i18n";
-  import { theme, language, showToast } from "../lib/stores";
+  import { currentView, theme, language, showToast } from "../lib/stores";
   import {
     exportProfile,
     importProfile,
@@ -148,7 +148,7 @@
           class:active={$language === "pt-BR"}
           on:click={() => handleLanguageChange("pt-BR")}
         >
-          <span class="flag">🇧🇷</span>
+          <span class="lang-code-pill">PT</span>
           <span>{$_("settings.language.pt")}</span>
         </button>
 
@@ -157,7 +157,7 @@
           class:active={$language === "en-US"}
           on:click={() => handleLanguageChange("en-US")}
         >
-          <span class="flag">🇺🇸</span>
+          <span class="lang-code-pill">EN</span>
           <span>{$_("settings.language.en")}</span>
         </button>
       </div>
@@ -290,6 +290,15 @@
     color: var(--accent-emerald);
   }
 
+  .lang-code-pill {
+    background: var(--bg-tertiary);
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.1rem 0.35rem;
+    border-radius: var(--radius-sm);
+    color: var(--accent-primary);
+  }
+
   .card-header h2 {
     font-size: 1.05rem;
     font-weight: 700;
@@ -343,14 +352,44 @@
     border: 1px solid var(--border-subtle);
   }
 
-  .theme-preview.light { background: #f8fafc; }
-  .theme-preview.light .preview-bar { height: 12px; background: #e2e8f0; }
+  .theme-preview.light {
+    background: #EFE5D3;
+    border: 1px solid #D7C8AE;
+  }
+  .theme-preview.light .preview-bar {
+    height: 12px;
+    background: #BC5215;
+  }
+  .theme-preview.light .preview-body {
+    flex: 1;
+    background: #E4D8C2;
+  }
 
-  .theme-preview.dark { background: #0f172a; }
-  .theme-preview.dark .preview-bar { height: 12px; background: #1e293b; }
+  .theme-preview.dark {
+    background: #100F0F;
+    border: 1px solid #282726;
+  }
+  .theme-preview.dark .preview-bar {
+    height: 12px;
+    background: #DA702C;
+  }
+  .theme-preview.dark .preview-body {
+    flex: 1;
+    background: #1C1B1A;
+  }
 
-  .theme-preview.system { background: linear-gradient(135deg, #f8fafc 50%, #0f172a 50%); }
-  .theme-preview.system .preview-bar { height: 12px; background: #64748b; }
+  .theme-preview.system {
+    background: linear-gradient(135deg, #EFE5D3 50%, #100F0F 50%);
+    border: 1px solid #343331;
+  }
+  .theme-preview.system .preview-bar {
+    height: 12px;
+    background: linear-gradient(90deg, #BC5215 50%, #DA702C 50%);
+  }
+  .theme-preview.system .preview-body {
+    flex: 1;
+    background: linear-gradient(135deg, #E4D8C2 50%, #1C1B1A 50%);
+  }
 
   /* Language Buttons */
   .lang-buttons-row, .backup-buttons-row {
@@ -376,10 +415,6 @@
   .lang-btn.active {
     border-color: var(--accent-primary);
     background: var(--accent-light);
-  }
-
-  .flag {
-    font-size: 1.1rem;
   }
 
   .primary-btn {

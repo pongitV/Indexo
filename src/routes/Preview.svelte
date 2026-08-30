@@ -147,6 +147,10 @@
   let targetFilesForReassign: ClassifiedFile[] = [];
   let targetReassignLabel = "";
 
+  // Multi-seleção com Shift e Ctrl
+  let selectedFileIds = new Set<string>();
+  let lastSelectedFileId: string | null = null;
+
   const presetColors = [
     "#3b82f6", "#06b6d4", "#10b981", "#84cc16",
     "#f59e0b", "#f97316", "#ef4444", "#ec4899",
@@ -731,6 +735,75 @@
     }
   }
 
+  function handleFileClick(e: MouseEvent, file: ClassifiedFile) {
+    if (e.ctrlKey || e.metaKey) {
+      if (selectedFileIds.has(file.file_id)) {
+        selectedFileIds.delete(file.file_id);
+      } else {
+        selectedFileIds.add(file.file_id);
+      }
+      lastSelectedFileId = file.file_id;
+      selectedFileIds = new Set(selectedFileIds);
+    } else if (e.shiftKey && lastSelectedFileId) {
+      const ids = filteredFiles.map((f) => f.file_id);
+      const startIdx = ids.indexOf(lastSelectedFileId);
+      const endIdx = ids.indexOf(file.file_id);
+      if (startIdx !== -1 && endIdx !== -1) {
+        const [min, max] = [Math.min(startIdx, endIdx), Math.max(startIdx, endIdx)];
+        for (let i = min; i <= max; i++) {
+          selectedFileIds.add(ids[i]);
+        }
+        selectedFileIds = new Set(selectedFileIds);
+      }
+    } else {
+      if (selectedFileIds.size > 0) {
+        selectedFileIds.clear();
+        selectedFileIds = new Set(selectedFileIds);
+      }
+      openFileContextMenu(e, file);
+    }
+  }
+
+  function handleBatchChangeTag() {
+    const selectedFilesList = filteredFiles.filter((f) => selectedFileIds.has(f.file_id));
+    if (selectedFilesList.length === 0) return;
+    targetFilesForReassign = selectedFilesList;
+    targetReassignLabel = `${selectedFilesList.length} arquivos selecionados`;
+    modalSearchQuery = "";
+    modalActiveTab = "all";
+    modalNewNameInput = "";
+    modalNewColorInput = presetColors[Math.floor(Math.random() * presetColors.length)];
+    showTagModal = true;
+  }
+
+  function handleBatchChangeCategory() {
+    const selectedFilesList = filteredFiles.filter((f) => selectedFileIds.has(f.file_id));
+    if (selectedFilesList.length === 0) return;
+    targetFilesForReassign = selectedFilesList;
+    targetReassignLabel = `${selectedFilesList.length} arquivos selecionados`;
+    modalSearchQuery = "";
+    modalActiveTab = "all";
+    modalNewNameInput = "";
+    modalNewColorInput = presetColors[Math.floor(Math.random() * presetColors.length)];
+    showCategoryModal = true;
+  }
+
+  function handleBatchIgnore() {
+    for (const id of selectedFileIds) {
+      ignoredFileIds.add(id);
+    }
+    ignoredFileIds = new Set(ignoredFileIds);
+    const count = selectedFileIds.size;
+    selectedFileIds.clear();
+    selectedFileIds = new Set(selectedFileIds);
+    showToast(`${count} arquivos selecionados foram ignorados.`, "info");
+  }
+
+  function handleClearSelection() {
+    selectedFileIds.clear();
+    selectedFileIds = new Set(selectedFileIds);
+  }
+
   async function assignCategoryToTarget(category: Category) {
     if (targetFilesForReassign.length === 0) return;
     const files = [...targetFilesForReassign];
@@ -958,9 +1031,11 @@
               <FileTreeNode
                 {node}
                 expandedIds={expandedBeforeIds}
+                {selectedFileIds}
                 onToggleFolder={toggleBeforeFolder}
                 onFileContextMenu={openFileContextMenu}
                 onFolderContextMenu={openFolderContextMenu}
+                onFileClick={handleFileClick}
               />
             {/each}
           </div>
@@ -1007,9 +1082,11 @@
                 {node}
                 expandedIds={expandedAfterIds}
                 highlightedNodeId={highlightedAfterNodeId}
+                {selectedFileIds}
                 onToggleFolder={toggleAfterFolder}
                 onFileContextMenu={openFileContextMenu}
                 onFolderContextMenu={openFolderContextMenu}
+                onFileClick={handleFileClick}
               />
             {/each}
           </div>
@@ -1017,6 +1094,35 @@
       </div>
     </section>
   </div>
+
+  <!-- Floating Batch Actions Toolbar -->
+  {#if selectedFileIds.size > 0}
+    <div class="floating-batch-toolbar">
+      <div class="batch-count-info">
+        <span class="batch-count-num">{selectedFileIds.size}</span>
+        <span>{selectedFileIds.size === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}</span>
+      </div>
+      <div class="batch-actions-group">
+        <button class="batch-btn primary" on:click={handleBatchChangeCategory}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            <polyline points="2 10 22 10"></polyline>
+          </svg>
+          Mudar Categoria / Tag em Lote
+        </button>
+        <button class="batch-btn secondary" on:click={handleBatchIgnore}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+          </svg>
+          Ignorar Selecionados
+        </button>
+        <button class="batch-btn ghost" on:click={handleClearSelection}>
+          Desmarcar Todos
+        </button>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <!-- Context Menu on Right Click (Com opção Renomear e Mostrar no Preview) -->
@@ -2405,6 +2511,87 @@
     border-width: 3px;
     border-top-color: var(--accent-primary);
     border-color: rgba(59, 130, 246, 0.2);
+  }
+
+  .floating-batch-toolbar {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent-primary);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.36), 0 0 16px rgba(59, 130, 246, 0.25);
+    border-radius: var(--radius-full);
+    padding: 0.5rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    z-index: 1000;
+    animation: fadeIn 200ms ease-out;
+  }
+
+  .batch-count-info {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .batch-count-num {
+    background: var(--accent-primary);
+    color: white;
+    padding: 0.1rem 0.5rem;
+    border-radius: var(--radius-full);
+    font-size: 0.78rem;
+  }
+
+  .batch-actions-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .batch-btn {
+    border: none;
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--radius-full);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all 120ms ease;
+  }
+
+  .batch-btn.primary {
+    background: var(--accent-primary);
+    color: white;
+  }
+
+  .batch-btn.primary:hover {
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+  }
+
+  .batch-btn.secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+  }
+
+  .batch-btn.secondary:hover {
+    background: var(--bg-hover);
+  }
+
+  .batch-btn.ghost {
+    background: transparent;
+    color: var(--text-muted);
+  }
+
+  .batch-btn.ghost:hover {
+    color: var(--text-primary);
   }
 
   @keyframes spin {

@@ -6,6 +6,7 @@ pub mod ocr;
 pub mod rules;
 pub mod renamer;
 pub mod subcategories;
+pub mod duplicates;
 
 #[cfg(test)]
 mod tests {

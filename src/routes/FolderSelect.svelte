@@ -80,17 +80,6 @@
 
 <div class="folder-select-page">
   <div class="folder-select-view">
-    <div class="hero-section">
-      <div class="hero-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-        </svg>
-        <span>Seguro & Local</span>
-      </div>
-      <h1>{$_("app.title")}</h1>
-      <p class="hero-subtitle">{$_("app.subtitle")}</p>
-    </div>
-
     <div
       class="drop-card glass-panel"
       class:dragging={isDragging}
@@ -103,7 +92,7 @@
       <div class="folder-graphic">
         <div class="graphic-glow"></div>
         <div class="graphic-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             <line x1="12" y1="11" x2="12" y2="17"></line>
             <polyline points="9 14 12 11 15 14"></polyline>
@@ -139,21 +128,6 @@
           </label>
         </div>
       </div>
-
-      <div class="features-row">
-        <div class="feature-item">
-          <span class="dot emerald"></span>
-          <span>Magic Bytes (Tipo Real)</span>
-        </div>
-        <div class="feature-item">
-          <span class="dot blue"></span>
-          <span>Clustering Semântico</span>
-        </div>
-        <div class="feature-item">
-          <span class="dot violet"></span>
-          <span>Auditoria & Undo Real</span>
-        </div>
-      </div>
     </div>
   </div>
 </div>
@@ -182,39 +156,6 @@
     min-height: 0;
     min-width: 0;
     animation: fadeIn 300ms ease-out;
-  }
-
-  .hero-section {
-    text-align: center;
-    margin-bottom: 1.5rem;
-    flex-shrink: 0;
-  }
-
-  .hero-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.85rem;
-    border-radius: var(--radius-full);
-    background: var(--accent-light);
-    color: var(--accent-primary);
-    font-size: 0.78rem;
-    font-weight: 700;
-    margin-bottom: 0.75rem;
-    border: 1px solid rgba(20, 184, 166, 0.2);
-  }
-
-  h1 {
-    font-size: 2.2rem;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    margin-bottom: 0.35rem;
-    color: var(--text-primary);
-  }
-
-  .hero-subtitle {
-    font-size: 1rem;
-    color: var(--text-muted);
   }
 
   .drop-card {
@@ -339,34 +280,6 @@
     color: var(--text-muted);
     line-height: 1.3;
   }
-
-  .features-row {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    margin-top: 2rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--border-subtle);
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-  }
-
-  .feature-item {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-  }
-
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-  }
-
-  .dot.emerald { background: var(--accent-emerald); box-shadow: 0 0 6px var(--accent-emerald); }
-  .dot.blue { background: var(--accent-blue); box-shadow: 0 0 6px var(--accent-blue); }
-  .dot.violet { background: var(--accent-violet); box-shadow: 0 0 6px var(--accent-violet); }
 
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(8px); }

@@ -1238,7 +1238,10 @@
       <div class="modal-header-row">
         <div class="header-title-box">
           <div class="title-with-pill">
-            <span class="history-icon-badge">✏️</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="history-icon-svg">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
             <h2>Histórico de Renomeações</h2>
           </div>
           <p class="modal-subtitle">
@@ -1256,7 +1259,12 @@
           </div>
         {:else if renameHistorySessions.length === 0}
           <div class="empty-history-state">
-            <div class="empty-icon">📝</div>
+            <div class="empty-icon-wrap">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+            </div>
             <h3>Nenhuma renomeação aplicada</h3>
             <p>Quando você aplicar renomeações aos seus arquivos, o histórico completo aparecerá aqui.</p>
           </div>
@@ -1269,8 +1277,19 @@
               <div class="rename-session-item" class:is-undone={isAllUndone}>
                 <div class="rename-session-header">
                   <div class="rename-session-meta">
-                    <span class="session-path-title">📁 {s.root_path}</span>
-                    <span class="session-time-tag">🕒 {formatDateTime(s.started_at)}</span>
+                    <span class="session-path-title">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                      {s.root_path}
+                    </span>
+                    <span class="session-time-tag">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                      </svg>
+                      {formatDateTime(s.started_at)}
+                    </span>
                     <span class="session-count-tag">
                       {appliedRenames.length} {appliedRenames.length === 1 ? "arquivo renomeado" : "arquivos renomeados"}
                     </span>
@@ -1282,7 +1301,11 @@
                       title="Desfazer e restaurar nomes originais"
                       on:click={() => handleUndoFromHistory(s.session_id)}
                     >
-                      ↩️ Desfazer Renomeação
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="1 4 1 10 7 10"></polyline>
+                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                      </svg>
+                      Desfazer Renomeação
                     </button>
                   {:else if isAllUndone}
                     <span class="undone-tag">Desfeito</span>

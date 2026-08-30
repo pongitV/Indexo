@@ -101,3 +101,18 @@ CREATE TABLE IF NOT EXISTS category_history (
     changed_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_category_history_cat ON category_history(category_id);
+
+CREATE TABLE IF NOT EXISTS custom_rules (
+    id                 TEXT PRIMARY KEY,
+    name               TEXT NOT NULL,
+    condition_field    TEXT NOT NULL, -- 'extension' | 'filename_contains' | 'content_contains' | 'size_greater' | 'size_smaller'
+    condition_operator TEXT NOT NULL, -- 'equals' | 'contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than'
+    condition_value    TEXT NOT NULL,
+    action_type        TEXT NOT NULL, -- 'move_category' | 'rename_pattern' | 'apply_tag'
+    action_value       TEXT NOT NULL,
+    is_enabled         INTEGER NOT NULL DEFAULT 1,
+    priority           INTEGER NOT NULL DEFAULT 10,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_custom_rules_enabled ON custom_rules(is_enabled);

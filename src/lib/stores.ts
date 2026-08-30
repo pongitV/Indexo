@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 import type { ClassifiedFile, ScanSummary } from "./api";
 
-export type View = "folder-select" | "scanning" | "preview" | "renamer" | "tags" | "categories" | "history" | "settings";
+export type View = "folder-select" | "scanning" | "preview" | "renamer" | "duplicates" | "tags" | "categories" | "history" | "rules" | "settings";
 
 export const currentView = writable<View>("folder-select");
 export const selectedFolder = writable<string | null>(null);

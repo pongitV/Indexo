@@ -55,6 +55,16 @@ fn main() {
             commands::system::get_file_preview,
             commands::rename::suggest_semantic_names,
             commands::rename::apply_renames,
+            commands::duplicates::scan_folder_duplicates,
+            commands::duplicates::resolve_duplicates_actions,
+            commands::rules::create_custom_rule,
+            commands::rules::list_custom_rules,
+            commands::rules::update_custom_rule,
+            commands::rules::delete_custom_rule,
+            commands::rules::toggle_custom_rule,
+            commands::rules::list_all_learned_rules,
+            commands::rules::delete_learned_rule,
+            commands::rules::get_storage_analytics,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Indexo");

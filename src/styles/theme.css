@@ -2,42 +2,49 @@
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
 
-  /* Light Theme */
-  --bg-primary: #f8fafc;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #f1f5f9;
-  --bg-card: rgba(255, 255, 255, 0.85);
-  --bg-hover: #e2e8f0;
-  
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --text-inverse: #ffffff;
+  /* Flexoki Light / Biblioteca de Alexandria (Dia / Página de Livro Bege Autêntica) */
+  --bg-primary: #EFE5D3;        /* Antique book page beige (bege de página de livro clássico) */
+  --bg-secondary: #E4D8C2;      /* Rich book paper card surface */
+  --bg-tertiary: #D7C8AE;       /* Warm elevated component surface */
+  --bg-card: rgba(228, 216, 194, 0.92);
+  --bg-hover: #C9B89B;          /* Warm book paper hover */
 
-  --border-subtle: rgba(15, 23, 42, 0.08);
-  --border-medium: rgba(15, 23, 42, 0.16);
-  --border-focus: #0f766e;
+  --text-primary: #211912;      /* Deep antique book ink */
+  --text-secondary: #483A2C;    /* Warm sepia-charcoal text */
+  --text-muted: #73624F;        /* Muted vintage ink */
+  --text-inverse: #EFE5D3;
 
-  --accent-primary: #0d9488;
-  --accent-primary-hover: #0f766e;
-  --accent-light: #ccfbf1;
-  --accent-glow: rgba(13, 148, 136, 0.2);
+  --border-subtle: rgba(33, 25, 18, 0.12);
+  --border-medium: rgba(33, 25, 18, 0.22);
 
-  --accent-emerald: #10b981;
-  --accent-blue: #3b82f6;
-  --accent-violet: #8b5cf6;
-  --accent-amber: #f59e0b;
-  --accent-rose: #f43f5e;
+  /* Alexandria & Flexoki Signature Accents (Terracotta / Papyrus / Warm Amber) */
+  --accent-primary: #BC5215;       /* Alexandria Terracotta / Ancient Leather */
+  --accent-primary-hover: #9C410F;
+  --accent-light: rgba(188, 82, 21, 0.14);
+  --accent-glow: rgba(188, 82, 21, 0.25);
+  --border-focus: #BC5215;
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
-  --shadow-glass: 0 8px 32px 0 rgba(15, 23, 42, 0.08);
+  --accent-terracotta: #AF3029;   /* Alexandria Terracotta / Clay */
+  --accent-rose: #AF3029;
+  --accent-amber: #BC5215;        /* Alexandria Amber / Ochre */
+  --accent-yellow: #AD8301;       /* Papyrus Gold */
+  --accent-green: #66800B;        /* Laurel Olive Green */
+  --accent-emerald: #66800B;
+  --accent-cyan: #24837B;         /* Mediterranean Cyan */
+  --accent-blue: #205EA6;         /* Lapis Lazuli Ink */
+  --accent-purple: #5E409D;       /* Royal Alexandria Purple */
+  --accent-violet: #5E409D;
+
+  --shadow-sm: 0 1px 2px 0 rgba(16, 15, 15, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(16, 15, 15, 0.06), 0 2px 4px -2px rgba(16, 15, 15, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(16, 15, 15, 0.08), 0 4px 6px -4px rgba(16, 15, 15, 0.03);
+  --shadow-xl: 0 20px 25px -5px rgba(16, 15, 15, 0.1), 0 8px 10px -6px rgba(16, 15, 15, 0.04);
+  --shadow-glass: 0 8px 32px 0 rgba(16, 15, 15, 0.06);
 
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
+  --radius-xl: 22px;
   --radius-full: 9999px;
 
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -45,60 +52,84 @@
 }
 
 [data-theme="dark"] {
-  --bg-primary: #090d16;
-  --bg-secondary: #0f172a;
-  --bg-tertiary: #1e293b;
-  --bg-card: rgba(15, 23, 42, 0.75);
-  --bg-hover: #1e293b;
+  /* Flexoki Dark / Biblioteca de Alexandria (Noite / Tinta & Pedra) */
+  --bg-primary: #100F0F;        /* Base 950 Deep Ink Charcoal */
+  --bg-secondary: #1C1B1A;      /* Base 900 Warm Dark Card */
+  --bg-tertiary: #282726;       /* Base 850 Elevated Panel */
+  --bg-card: rgba(28, 27, 26, 0.85);
+  --bg-hover: #343331;          /* Base 800 Hover Surface */
 
-  --text-primary: #f8fafc;
-  --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
-  --text-inverse: #090d16;
+  --text-primary: #CECDC3;      /* Base 200 Warm Papyrus Cream */
+  --text-secondary: #A8A69E;    /* Base 400 Soft Paper */
+  --text-muted: #878580;        /* Base 600 Stone Muted */
+  --text-inverse: #100F0F;
 
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-medium: rgba(255, 255, 255, 0.15);
-  --border-focus: #14b8a6;
+  --border-subtle: rgba(206, 205, 195, 0.09);
+  --border-medium: rgba(206, 205, 195, 0.16);
+  --border-focus: #DA702C;      /* Luminous Alexandria Amber */
 
-  --accent-primary: #14b8a6;
-  --accent-primary-hover: #2dd4bf;
-  --accent-light: rgba(20, 184, 166, 0.15);
-  --accent-glow: rgba(20, 184, 166, 0.35);
+  /* Accents */
+  --accent-primary: #DA702C;       /* Luminous Alexandria Amber / Antique Gold */
+  --accent-primary-hover: #E8853D;
+  --accent-light: rgba(218, 112, 44, 0.18);
+  --accent-glow: rgba(218, 112, 44, 0.32);
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
-  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  --accent-terracotta: #D14D41;
+  --accent-rose: #D14D41;
+  --accent-amber: #DA702C;
+  --accent-yellow: #D0A215;
+  --accent-green: #879A39;
+  --accent-emerald: #879A39;
+  --accent-cyan: #3AA99F;
+  --accent-blue: #4385BE;
+  --accent-purple: #8B7EC8;
+  --accent-violet: #8B7EC8;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
+  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
-    --bg-primary: #090d16;
-    --bg-secondary: #0f172a;
-    --bg-tertiary: #1e293b;
-    --bg-card: rgba(15, 23, 42, 0.75);
-    --bg-hover: #1e293b;
+    --bg-primary: #100F0F;
+    --bg-secondary: #1C1B1A;
+    --bg-tertiary: #282726;
+    --bg-card: rgba(28, 27, 26, 0.85);
+    --bg-hover: #343331;
 
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --text-inverse: #090d16;
+    --text-primary: #CECDC3;
+    --text-secondary: #A8A69E;
+    --text-muted: #878580;
+    --text-inverse: #100F0F;
 
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --border-medium: rgba(255, 255, 255, 0.15);
-    --border-focus: #14b8a6;
+    --border-subtle: rgba(206, 205, 195, 0.09);
+    --border-medium: rgba(206, 205, 195, 0.16);
+    --border-focus: #DA702C;
 
-    --accent-primary: #14b8a6;
-    --accent-primary-hover: #2dd4bf;
-    --accent-light: rgba(20, 184, 166, 0.15);
-    --accent-glow: rgba(20, 184, 166, 0.35);
+    --accent-primary: #DA702C;
+    --accent-primary-hover: #E8853D;
+    --accent-light: rgba(218, 112, 44, 0.18);
+    --accent-glow: rgba(218, 112, 44, 0.32);
 
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
-    --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+    --accent-terracotta: #D14D41;
+    --accent-rose: #D14D41;
+    --accent-amber: #DA702C;
+    --accent-yellow: #D0A215;
+    --accent-green: #879A39;
+    --accent-emerald: #879A39;
+    --accent-cyan: #3AA99F;
+    --accent-blue: #4385BE;
+    --accent-purple: #8B7EC8;
+    --accent-violet: #8B7EC8;
+
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
+    --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
   }
 }
 

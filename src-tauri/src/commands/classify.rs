@@ -122,8 +122,58 @@ pub async fn classify_scanned_files(
         resolved_map.insert(idx, (rel_folder.clone(), 1.0, 1));
     }
 
+    // Prioridade 0.5: Regras Customizadas do Usuário
+    let custom_rules = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        db.list_custom_rules().unwrap_or_default()
+    };
+    let enabled_custom_rules: Vec<_> = custom_rules.into_iter().filter(|r| r.is_enabled).collect();
+
+    for (idx, meta) in file_metas.iter().enumerate() {
+        if already_organized_map.contains_key(&idx) {
+            continue;
+        }
+
+        for rule in &enabled_custom_rules {
+            let matched = match rule.condition_field.as_str() {
+                "extension" => {
+                    let ext = meta.extension_declared.as_deref().unwrap_or("").to_lowercase();
+                    let target = rule.condition_value.to_lowercase().trim_start_matches('.').to_string();
+                    match rule.condition_operator.as_str() {
+                        "equals" => ext == target,
+                        "contains" => ext.contains(&target),
+                        _ => ext == target,
+                    }
+                }
+                "filename_contains" => {
+                    let name = meta.filename.to_lowercase();
+                    let target = rule.condition_value.to_lowercase();
+                    name.contains(&target)
+                }
+                "size_greater" => {
+                    let size_mb: f64 = rule.condition_value.parse().unwrap_or(0.0);
+                    let target_bytes = (size_mb * 1024.0 * 1024.0) as u64;
+                    meta.size_bytes > target_bytes
+                }
+                "size_smaller" => {
+                    let size_mb: f64 = rule.condition_value.parse().unwrap_or(0.0);
+                    let target_bytes = (size_mb * 1024.0 * 1024.0) as u64;
+                    meta.size_bytes < target_bytes
+                }
+                _ => false,
+            };
+
+            if matched {
+                if rule.action_type == "move_category" || rule.action_type == "apply_tag" {
+                    resolved_map.insert(idx, (rule.action_value.clone(), 1.0, 1));
+                    break;
+                }
+            }
+        }
+    }
+
     for (idx, res) in &heuristic_results {
-        if already_organized_map.contains_key(idx) {
+        if already_organized_map.contains_key(idx) || resolved_map.contains_key(idx) {
             continue;
         }
 

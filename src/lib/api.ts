@@ -298,3 +298,134 @@ export function onClassifyProgress(cb: (payload: ClassifyProgressPayload) => voi
   return listen<ClassifyProgressPayload>("classify://progress", (e) => cb(e.payload));
 }
 
+// ==========================================
+// DEDUPLICADOR INTELIGENTE (VIEW-FIRST)
+// ==========================================
+
+export interface DuplicateItem {
+  path: string;
+  filename: string;
+  size_bytes: number;
+  modified_at?: string | null;
+  resolution?: string | null;
+  is_recommended_to_keep: boolean;
+  is_selected_to_keep: boolean;
+}
+
+export interface DuplicateGroup {
+  group_id: string;
+  hash: string;
+  size_bytes: number;
+  items: DuplicateItem[];
+  potential_savings_bytes: number;
+}
+
+export interface DuplicateResolveAction {
+  keep_path: string;
+  delete_or_move_paths: string[];
+  action_type: "trash" | "delete" | "archive_folder";
+  archive_folder_path?: string | null;
+}
+
+export async function scanFolderDuplicates(folderPath: string): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("scan_folder_duplicates", { folderPath });
+}
+
+export async function resolveDuplicatesActions(actions: DuplicateResolveAction[]): Promise<number> {
+  return invoke<number>("resolve_duplicates_actions", { actions });
+}
+
+// ==========================================
+// REGRAS PERSONALIZADAS E APRENDIDAS
+// ==========================================
+
+export interface CustomRule {
+  id: string;
+  name: string;
+  condition_field: "extension" | "filename_contains" | "content_contains" | "size_greater" | "size_smaller";
+  condition_operator: "equals" | "contains" | "starts_with" | "ends_with" | "greater_than" | "less_than";
+  condition_value: string;
+  action_type: "move_category" | "rename_pattern" | "apply_tag";
+  action_value: string;
+  is_enabled: boolean;
+  priority: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateCustomRuleInput {
+  name: string;
+  condition_field: string;
+  condition_operator: string;
+  condition_value: string;
+  action_type: string;
+  action_value: string;
+  priority?: number | null;
+}
+
+export interface LearnedRuleInfo {
+  id: string;
+  pattern_type: string;
+  pattern_value: string;
+  category_id: string;
+  category_name: string;
+  category_color?: string | null;
+  confidence_weight: number;
+  created_from: string;
+  hit_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function createCustomRule(input: CreateCustomRuleInput): Promise<CustomRule> {
+  return invoke<CustomRule>("create_custom_rule", { input });
+}
+
+export async function listCustomRules(): Promise<CustomRule[]> {
+  return invoke<CustomRule[]>("list_custom_rules");
+}
+
+export async function updateCustomRule(rule: CustomRule): Promise<void> {
+  return invoke<void>("update_custom_rule", { rule });
+}
+
+export async function deleteCustomRule(id: string): Promise<void> {
+  return invoke<void>("delete_custom_rule", { id });
+}
+
+export async function toggleCustomRule(id: string, isEnabled: boolean): Promise<void> {
+  return invoke<void>("toggle_custom_rule", { id, isEnabled });
+}
+
+export async function listAllLearnedRules(): Promise<LearnedRuleInfo[]> {
+  return invoke<LearnedRuleInfo[]>("list_all_learned_rules");
+}
+
+export async function deleteLearnedRule(id: string): Promise<void> {
+  return invoke<void>("delete_learned_rule", { id });
+}
+
+// ==========================================
+// ESTATÍSTICAS E ANÁLISE DE ARMAZENAMENTO
+// ==========================================
+
+export interface StorageCategoryStat {
+  category_name: string;
+  category_color?: string | null;
+  total_files: number;
+  total_bytes: number;
+  percentage: number;
+}
+
+export interface StorageAnalytics {
+  total_organized_files: number;
+  total_organized_bytes: number;
+  total_sessions_count: number;
+  categories_breakdown: StorageCategoryStat[];
+  recent_activity_dates: string[];
+}
+
+export async function getStorageAnalytics(): Promise<StorageAnalytics> {
+  return invoke<StorageAnalytics>("get_storage_analytics");
+}
+
