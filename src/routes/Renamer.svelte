@@ -345,10 +345,15 @@
 
   function openContextMenu(e: MouseEvent, item: RenameSuggestion) {
     e.preventDefault();
+    const menuWidth = 280;
+    const menuMaxHeight = 440;
+    const posX = Math.max(12, Math.min(e.clientX, window.innerWidth - menuWidth - 16));
+    const posY = Math.max(12, Math.min(e.clientY, window.innerHeight - menuMaxHeight - 16));
+
     contextMenu = {
       visible: true,
-      x: Math.min(e.clientX, window.innerWidth - 280),
-      y: Math.min(e.clientY, window.innerHeight - 320),
+      x: posX,
+      y: posY,
       item,
     };
   }
@@ -1890,11 +1895,34 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl);
     padding: 0.5rem;
-    width: 270px;
+    width: 280px;
+    max-height: min(480px, calc(100vh - 28px));
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
     animation: fadeIn 150ms ease-out;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+  }
+
+  .custom-context-menu::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-context-menu::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-context-menu::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: 4px;
+  }
+
+  .custom-context-menu::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
   }
 
   .context-card-header {
