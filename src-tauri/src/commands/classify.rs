@@ -92,13 +92,13 @@ pub async fn classify_scanned_files(
         }
     }
 
-    // Para cada subpasta candidata, verifica a coerência semântica
+    // Para cada subpasta candidata, verifica a coerência semântica e tipológica
     for (rel_folder, indices) in folder_to_indices {
         let folder_files: Vec<&FileMeta> = indices.iter().map(|&i| &file_metas[i]).collect();
         let coherence = crate::engine::heuristics::calculate_folder_coherence(&folder_files, &rules);
 
-        // Se a pasta possui coerência suficiente (>= 0.60) ou tem estrutura multinível clara, preserva
-        if coherence >= 0.60 || rel_folder.contains('/') {
+        // Se a subpasta é legítima (não é pasta de descarte e possui coerência mínima ou estrutura), preserva 100% intacta
+        if coherence >= 0.40 || rel_folder.contains('/') {
             for idx in indices {
                 already_organized_map.insert(idx, rel_folder.clone());
             }

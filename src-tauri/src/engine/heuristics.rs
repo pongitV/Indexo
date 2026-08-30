@@ -80,7 +80,7 @@ pub fn is_excluded_path(path: &Path) -> bool {
 }
 
 /// Camada 1 do motor de classificacao:
-/// classificacao instantanea, sem ler o conteudo do arquivo.
+/// classificacao instantanea de alta precisao, sem ler o conteudo do arquivo.
 pub fn classify_by_heuristics(
     file: &FileMeta,
     known_rules: &[ClassificationRule],
@@ -89,25 +89,43 @@ pub fn classify_by_heuristics(
     let ext_declared = file.extension_declared.as_deref().unwrap_or("").to_lowercase();
     let ext_detected = file.extension_detected.as_deref().unwrap_or("").to_lowercase();
 
+    let effective_ext = if !ext_declared.is_empty() {
+        ext_declared.as_str()
+    } else {
+        ext_detected.as_str()
+    };
+
     // -------------------------------------------------------------
-    // SINAL 1: Regras aprendidas (classification_rules) - PRIORIDADE MÁXIMA
+    // SINAL 1: Regras aprendidas (classification_rules) - Validação Estrita
     // -------------------------------------------------------------
     for rule in known_rules {
         let pat_val = rule.pattern_value.to_lowercase();
         let matches = match rule.pattern_type.as_str() {
             "extension" => ext_declared == pat_val || ext_detected == pat_val,
-            "filename_regex" => filename_lower.contains(&pat_val),
-            "content_keyword" => filename_lower.contains(&pat_val),
+            "filename_regex" => {
+                // Exige casamento por token de palavra completa (evita falso positivo por substring)
+                contains_word_token(&filename_lower, &[&pat_val])
+            }
+            "content_keyword" => contains_word_token(&filename_lower, &[&pat_val]),
             _ => false,
         };
 
         if matches {
-            let conf = (rule.confidence_weight + (rule.hit_count as f32 * 0.05)).clamp(0.80, 0.99);
-            return HeuristicResult {
-                category_guess: Some(rule.category_id.clone()),
-                confidence: conf,
-                needs_deeper_analysis: false,
-            };
+            // Verifica se a regra aprendida não viola o domínio óbvio de código/scripts
+            let is_code_file = is_code_or_script_extension(effective_ext);
+            let is_finance_rule = rule.category_id.to_lowercase().contains("boleto")
+                || rule.category_id.to_lowercase().contains("fatura")
+                || rule.category_id.to_lowercase().contains("recibo")
+                || rule.category_id.to_lowercase().contains("comprovante");
+
+            if !(is_code_file && is_finance_rule) {
+                let conf = (rule.confidence_weight + (rule.hit_count as f32 * 0.05)).clamp(0.80, 0.99);
+                return HeuristicResult {
+                    category_guess: Some(rule.category_id.clone()),
+                    confidence: conf,
+                    needs_deeper_analysis: false,
+                };
+            }
         }
     }
 
@@ -124,7 +142,7 @@ pub fn classify_by_heuristics(
         && !extensions_are_compatible(&ext_declared, &ext_detected);
 
     if has_extension_mismatch {
-        score -= 0.35; // Penalidade forte por extensao falsa/corrompida
+        score -= 0.35; // Penalidade por extensao falsa/corrompida
     }
 
     // -------------------------------------------------------------
@@ -139,15 +157,9 @@ pub fn classify_by_heuristics(
     }
 
     let final_confidence = score.clamp(0.0, 0.95);
-    
-    let effective_ext = if !ext_declared.is_empty() {
-        ext_declared.as_str()
-    } else {
-        ext_detected.as_str()
-    };
 
-    // Documentos textuais e imagens com nomes genéricos (ex: prints, scans) requerem análise semântica de conteúdo/OCR (Camada 2).
-    let is_textual_doc = ["pdf", "docx", "doc", "odt", "rtf", "txt", "md", "csv", "tsv", "xlsx", "xls", "ods"]
+    // Documentos textuais e imagens com nomes genéricos requerem análise semântica de conteúdo/OCR (Camada 2).
+    let is_textual_doc = ["pdf", "docx", "doc", "odt", "rtf", "txt", "csv", "tsv", "xlsx", "xls", "ods"]
         .contains(&effective_ext);
 
     let is_ocr_candidate_image = crate::engine::ocr::is_ocr_supported_extension(effective_ext) && is_generic_name;
@@ -155,7 +167,7 @@ pub fn classify_by_heuristics(
     let is_resolved = if is_textual_doc {
         final_confidence >= CONFIDENCE_THRESHOLD && !is_generic_name && !has_extension_mismatch
     } else if is_ocr_candidate_image {
-        // Imagens com nomes genéricos (prints de tela, scans, fotos de documentos) passam pelo OCR na Camada 2
+        // Imagens com nomes genéricos passam pelo OCR na Camada 2
         false
     } else {
         nlp_category.is_some() && !has_extension_mismatch && final_confidence >= 0.60
@@ -168,7 +180,18 @@ pub fn classify_by_heuristics(
     }
 }
 
-/// Analisa o nome do arquivo, extrai tokens semanticos e categoriza
+/// Verifica se a extensão pertence estritamente ao domínio de código e desenvolvimento
+pub fn is_code_or_script_extension(ext: &str) -> bool {
+    let code_exts = [
+        "bat", "cmd", "sh", "ps1", "rs", "ts", "js", "py", "c", "cpp", "h", "hpp",
+        "java", "go", "php", "sql", "html", "css", "scss", "json", "yaml", "yml",
+        "toml", "xml", "dockerfile", "vue", "svelte", "swift", "kt", "cs", "lua",
+        "rb", "dart", "wasm", "vbs", "asm", "hex", "ini", "cfg", "conf", "env",
+    ];
+    code_exts.contains(&ext)
+}
+
+/// Analisa o nome do arquivo com tokenização estrita por limites de palavra e matriz de extensões
 fn analyze_filename_nlp(filename: &str, ext_declared: &str, ext_detected: &str) -> (Option<String>, f32, bool) {
     let lower = filename.to_lowercase();
     let effective_ext = if !ext_declared.is_empty() {
@@ -177,10 +200,70 @@ fn analyze_filename_nlp(filename: &str, ext_declared: &str, ext_detected: &str) 
         ext_detected
     };
 
-    // Detectar nomes puramente genericos / numericos / hashes / timestamps de camera
     let is_generic = is_generic_or_random_name(filename);
 
-    // 1. Dicionario Semantico Financeiro / Boletos / Faturas
+    // =========================================================================
+    // DOMÍNIO 1: Código, Scripts e Desenvolvimento (Extensões Protegidas)
+    // NUNCA podem ser classificados como Boletos, Faturas, Fotos ou Mídia
+    // =========================================================================
+    if is_code_or_script_extension(effective_ext) {
+        return (Some("Código e Desenvolvimento".to_string()), 0.90, is_generic);
+    }
+
+    // =========================================================================
+    // DOMÍNIO 2: Documentação Técnica e Markdown (.md, .rst, .tex)
+    // =========================================================================
+    let markdown_exts = ["md", "markdown", "rst", "adoc", "tex", "log"];
+    if markdown_exts.contains(&effective_ext) {
+        return (Some("Documentos e Documentação".to_string()), 0.85, is_generic);
+    }
+
+    // =========================================================================
+    // DOMÍNIO 3: Mídias Nativas (Extensões com Tipologia Inegociável)
+    // =========================================================================
+    let image_exts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "tiff", "ico", "raw", "heic", "psd", "ai", "eps", "xcf", "cr2", "nef", "arw"];
+    if image_exts.contains(&effective_ext) {
+        let conf = if is_generic { 0.65 } else { 0.85 };
+        return (Some("Fotos e Imagens".to_string()), conf, is_generic);
+    }
+
+    let video_exts = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "3gp", "ts", "mpg", "mpeg"];
+    if video_exts.contains(&effective_ext) {
+        let conf = if is_generic { 0.70 } else { 0.85 };
+        return (Some("Vídeos".to_string()), conf, is_generic);
+    }
+
+    let audio_exts = ["mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "mid", "midi", "opus", "aiff", "alac"];
+    if audio_exts.contains(&effective_ext) {
+        return (Some("Áudios e Músicas".to_string()), 0.85, is_generic);
+    }
+
+    let archive_exts = ["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "iso", "tgz", "cab", "lz", "zst"];
+    if archive_exts.contains(&effective_ext) {
+        return (Some("Arquivos Compactados".to_string()), 0.88, is_generic);
+    }
+
+    let installer_exts = ["exe", "msi", "dmg", "pkg", "appimage", "deb", "rpm", "apk", "jar", "dll", "so", "dylib", "sys"];
+    if installer_exts.contains(&effective_ext) {
+        return (Some("Instaladores e Programas".to_string()), 0.90, is_generic);
+    }
+
+    let ebook_exts = ["epub", "mobi", "azw3", "cbr", "cbz", "fb2"];
+    if ebook_exts.contains(&effective_ext) {
+        return (Some("Livros e E-books".to_string()), 0.88, is_generic);
+    }
+
+    let sheet_exts = ["xlsx", "xls", "csv", "ods", "tsv", "xlsm", "numbers"];
+    if sheet_exts.contains(&effective_ext) {
+        let conf = if is_generic { 0.60 } else { 0.80 };
+        return (Some("Planilhas e Dados".to_string()), conf, is_generic);
+    }
+
+    // =========================================================================
+    // DOMÍNIO 4: Dicionários Semânticos por Palavras-Chave (Apenas Docs/PDFs)
+    // =========================================================================
+
+    // 1. Financeiro / Boletos / Faturas (Tokens Exatos e Expressões Compostas)
     let finance_keywords = [
         "boleto", "fatura", "conta_de_luz", "conta_luz", "conta_de_agua", "conta_agua",
         "energia", "enel", "cemig", "copel", "cpfl", "sabesp", "sanepar", "embasa",
@@ -188,7 +271,7 @@ fn analyze_filename_nlp(filename: &str, ext_declared: &str, ext_detected: &str) 
         "tributo", "fatura_cartao", "fatura_nubank", "fatura_itau", "fatura_bradesco",
         "invoice", "electric_bill", "utility_bill", "phone_bill",
     ];
-    if contains_any(&lower, &finance_keywords) {
+    if contains_word_token(&lower, &finance_keywords) {
         return (Some("Boletos e Faturas".to_string()), 0.88, is_generic);
     }
 
@@ -198,7 +281,7 @@ fn analyze_filename_nlp(filename: &str, ext_declared: &str, ext_detected: &str) 
         "extrato", "extrato_bancario", "holerite", "contracheque", "receipt", "payment_receipt",
         "voucher", "statement", "bank_statement",
     ];
-    if contains_any(&lower, &receipt_keywords) {
+    if contains_word_token(&lower, &receipt_keywords) {
         return (Some("Comprovantes e Recibos".to_string()), 0.86, is_generic);
     }
 
@@ -206,7 +289,7 @@ fn analyze_filename_nlp(filename: &str, ext_declared: &str, ext_detected: &str) 
     let tax_doc_keywords = [
         "danfe", "nfe", "nf-e", "nfse", "nfs-e", "nota_fiscal", "notafiscal", "cupom_fiscal", "xml_nfe",
     ];
-    if contains_any(&lower, &tax_doc_keywords) {
+    if contains_word_token(&lower, &tax_doc_keywords) {
         return (Some("Notas Fiscais".to_string()), 0.90, is_generic);
     }
 
@@ -216,17 +299,17 @@ fn analyze_filename_nlp(filename: &str, ext_declared: &str, ext_detected: &str) 
         "estatuto", "certidao", "aditivo", "notificacao", "juridico", "contract", "agreement",
         "nda", "affidavit", "power_of_attorney", "deed", "termo_de_rescisao",
     ];
-    if contains_any(&lower, &legal_keywords) {
+    if contains_word_token(&lower, &legal_keywords) {
         return (Some("Contratos e Jurídico".to_string()), 0.85, is_generic);
     }
 
     // 5. Documentos Pessoais e Identidade
     let personal_doc_keywords = [
-        "rg_", "cpf_", "cnh_", "passaporte", "identidade", "carteira_de_trabalho", "titulo_eleitor",
-        "certidao_nascimento", "certidao_casamento", "curriculo", "curriculum", "resume", "cv_",
+        "rg", "cpf", "cnh", "passaporte", "identidade", "carteira_de_trabalho", "titulo_eleitor",
+        "certidao_nascimento", "certidao_casamento", "curriculo", "curriculum", "resume", "cv",
         "passport", "driver_license",
     ];
-    if contains_any(&lower, &personal_doc_keywords) {
+    if contains_word_token(&lower, &personal_doc_keywords) {
         return (Some("Documentos Pessoais".to_string()), 0.86, is_generic);
     }
 
@@ -236,77 +319,23 @@ fn analyze_filename_nlp(filename: &str, ext_declared: &str, ext_detected: &str) 
         "proposta_comercial", "briefing", "cronograma", "planejamento", "report", "presentation",
         "proposal", "budget", "project_plan", "meeting_minutes",
     ];
-    if contains_any(&lower, &work_keywords) {
+    if contains_word_token(&lower, &work_keywords) {
         return (Some("Relatórios e Projetos".to_string()), 0.82, is_generic);
     }
 
     // 7. Estudos e Academico
     let study_keywords = [
         "tcc", "artigo_cientifico", "dissertacao", "tese", "monografia", "apostila",
-        "resumo_aula", "prova_", "gabarito", "exercicio", "syllabus", "thesis", "essay",
+        "resumo_aula", "prova", "gabarito", "exercicio", "syllabus", "thesis", "essay",
         "academic_paper",
     ];
-    if contains_any(&lower, &study_keywords) {
+    if contains_word_token(&lower, &study_keywords) {
         return (Some("Estudos e Acadêmico".to_string()), 0.82, is_generic);
     }
 
-    // 8. Instaladores e Programas
-    let installer_exts = ["exe", "msi", "dmg", "pkg", "appimage", "deb", "rpm"];
-    let installer_keywords = ["setup", "installer", "install", "portable", "patch", "update"];
-    if installer_exts.contains(&effective_ext) || contains_any(&lower, &installer_keywords) {
-        return (Some("Instaladores e Programas".to_string()), 0.90, is_generic);
-    }
-
-    // 9. Arquivos Compactados
-    let archive_exts = ["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "iso", "tgz"];
-    let archive_keywords = ["backup", "archive", "dump", "bundle"];
-    if archive_exts.contains(&effective_ext) || contains_any(&lower, &archive_keywords) {
-        return (Some("Arquivos Compactados".to_string()), 0.88, is_generic);
-    }
-
-    // 10. Midia: Fotos e Imagens
-    let image_exts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "tiff", "ico", "raw", "heic", "psd", "ai"];
-    if image_exts.contains(&effective_ext) {
-        let conf = if is_generic { 0.65 } else { 0.85 };
-        return (Some("Fotos e Imagens".to_string()), conf, is_generic);
-    }
-
-    // 11. Midia: Videos
-    let video_exts = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "3gp"];
-    if video_exts.contains(&effective_ext) {
-        let conf = if is_generic { 0.70 } else { 0.85 };
-        return (Some("Vídeos".to_string()), conf, is_generic);
-    }
-
-    // 12. Midia: Audios e Musicas
-    let audio_exts = ["mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "mid", "midi"];
-    if audio_exts.contains(&effective_ext) {
-        return (Some("Áudios e Músicas".to_string()), 0.85, is_generic);
-    }
-
-    // 13. Livros e E-books
-    let ebook_exts = ["epub", "mobi", "azw3", "cbr", "cbz"];
-    if ebook_exts.contains(&effective_ext) {
-        return (Some("Livros e E-books".to_string()), 0.88, is_generic);
-    }
-
-    // 14. Planilhas e Dados
-    let sheet_exts = ["xlsx", "xls", "csv", "ods", "tsv"];
-    if sheet_exts.contains(&effective_ext) {
-        let conf = if is_generic { 0.60 } else { 0.80 };
-        return (Some("Planilhas e Dados".to_string()), conf, is_generic);
-    }
-
-    // 15. Codigo e Desenvolvimento
-    let code_exts = ["rs", "ts", "js", "py", "c", "cpp", "h", "hpp", "java", "go", "php", "sql", "html", "css", "scss", "json", "yaml", "yml", "toml", "xml", "sh", "bat", "ps1", "dockerfile"];
-    if code_exts.contains(&effective_ext) {
-        return (Some("Código e Desenvolvimento".to_string()), 0.85, is_generic);
-    }
-
-    // 16. Documentos de Texto / PDF sem palavra-chave
-    let doc_exts = ["pdf", "docx", "doc", "odt", "rtf", "txt", "md"];
+    // 8. Documentos de Texto / PDF sem palavra-chave específica
+    let doc_exts = ["pdf", "docx", "doc", "odt", "rtf", "txt"];
     if doc_exts.contains(&effective_ext) {
-        // Precisa ir para analise de conteudo (Camada 2)
         return (Some("Documentos".to_string()), 0.50, is_generic);
     }
 
@@ -412,6 +441,13 @@ fn get_parent_directory_hint(file_path: &str) -> Option<String> {
 
 /// Detecta se um arquivo já está situado em uma subpasta organizada/estruturada em relação à raiz escaneada.
 /// Retorna Some(relative_folder_path) se a subpasta possui coerência estrutural e semântica real.
+///
+/// **PRIMEIRO ATIVO DO SISTEMA**:
+/// - Preserva projetos de código (com package.json, Cargo.toml, Makefile, .csproj, etc.).
+/// - Preserva pastas de jogos e softwares (com .exe, .dll, assets/, data/, bin/, config.ini, etc.).
+/// - Preserva subpastas com prefixos compartilhados ou hierarquias multiníveis.
+/// - Apenas pastas de despejo/descarte (downloads, temp, desktop, nova pasta, unsorted, bagunça)
+///   e arquivos soltos diretamente na raiz são elegíveis para reorganização.
 pub fn detect_already_organized_folder(file_path: &str, root_path: &str) -> Option<String> {
     let p_file = Path::new(file_path);
     let p_root = Path::new(root_path);
@@ -447,45 +483,100 @@ pub fn detect_already_organized_folder(file_path: &str, root_path: &str) -> Opti
         "to_sort", "unsorted", "loose", "scratch", "test", "teste", "todos", "all",
     ];
 
-    // Verifica cada segmento da árvore de diretórios
-    for seg in &segments {
-        let seg_lower = seg.to_lowercase();
-        
-        // Verifica se é pasta de lixo/descarte conhecida
-        if generic_dump_folders.contains(&seg_lower.as_str()) {
-            return None;
-        }
+    // Se o primeiro segmento da pasta relativa for uma pasta de despejo/descarte conhecida, não é organizada
+    let top_segment_lower = segments[0].to_lowercase();
+    if generic_dump_folders.contains(&top_segment_lower.as_str()) {
+        return None;
+    }
 
-        // Padrões como "Nova Pasta (1)", "New Folder 2", "Pasta 3"
-        if (seg_lower.starts_with("nova pasta") || seg_lower.starts_with("new folder") || seg_lower.starts_with("pasta "))
-            && seg_lower.len() < 20
-        {
-            return None;
-        }
+    // Verifica padrões como "Nova Pasta (1)", "New Folder 2", "Pasta 3"
+    if (top_segment_lower.starts_with("nova pasta")
+        || top_segment_lower.starts_with("new folder")
+        || top_segment_lower.starts_with("pasta "))
+        && top_segment_lower.len() < 20
+    {
+        return None;
+    }
 
-        // Se for um único caractere sem significado (exceto letras de drive)
-        if seg_lower.len() < 2 {
-            return None;
-        }
-
-        // Se for um hash hexadecimal de pasta temporária (ex: 32 chars)
-        if (seg_lower.len() == 32 || seg_lower.len() == 36) && seg_lower.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-            return None;
-        }
+    // Se for um hash hexadecimal de pasta temporária (ex: 32 chars)
+    if (top_segment_lower.len() == 32 || top_segment_lower.len() == 36)
+        && top_segment_lower.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+    {
+        return None;
     }
 
     Some(segments.join("/"))
 }
 
 /// Avalia o score de coerência semântica e tipológica de um grupo de arquivos em uma pasta (0.0 a 1.0)
+///
+/// Reconhece com alta prioridade:
+/// 1. Projetos de software / código (presença de manifestos de projeto).
+/// 2. Jogos / aplicações / executáveis com bibliotecas (.exe + .dll / .pak / assets).
+/// 3. Prefixo de nome compartilhado entre a pasta e os arquivos.
+/// 4. Categorias majoritárias homogêneas.
 pub fn calculate_folder_coherence(files: &[&FileMeta], known_rules: &[ClassificationRule]) -> f32 {
     if files.is_empty() {
         return 0.0;
     }
     if files.len() == 1 {
-        return 0.80; // Arquivo único já em pasta estruturada
+        return 0.85; // Arquivo único já em pasta estruturada
     }
 
+    // 1. Verificação de Projeto de Código ou Software
+    let project_marker_files = [
+        "package.json", "cargo.toml", "cargo.lock", "makefile", "cmakelists.txt",
+        "requirements.txt", "pyproject.toml", "setup.py", "go.mod", "dockerfile",
+        "docker-compose.yml", "tsconfig.json", "pom.xml", "build.gradle",
+        "solution.sln", ".csproj", ".vcxproj", "readme.md",
+    ];
+
+    let has_project_marker = files.iter().any(|f| {
+        let name_lower = f.filename.to_lowercase();
+        project_marker_files.contains(&name_lower.as_str()) || name_lower.ends_with(".sln") || name_lower.ends_with(".csproj")
+    });
+
+    if has_project_marker {
+        return 0.98; // É claramente um projeto organizado, manter 100% intacto
+    }
+
+    // 2. Verificação de Pasta de Jogo ou Aplicação
+    let has_executable = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ext == "exe" || ext == "msi" || ext == "appimage"
+    });
+    let has_app_support = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ["dll", "pak", "dat", "cfg", "ini", "bin", "so", "pck", "rpf"].contains(&ext.as_str())
+    });
+
+    if has_executable && has_app_support {
+        return 0.98; // É um jogo ou suíte de software, manter 100% intacto
+    }
+
+    // 3. Verificação de Prefixo Compartilhado (Nome da pasta presente nos arquivos)
+    if let Some(first) = files.first() {
+        if let Some(parent_hint) = get_parent_directory_hint(&first.path) {
+            let parent_tokens: Vec<&str> = parent_hint
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|t| t.len() >= 3)
+                .collect();
+
+            if !parent_tokens.is_empty() {
+                let matching_files = files.iter().filter(|f| {
+                    let f_lower = f.filename.to_lowercase();
+                    parent_tokens.iter().any(|&token| f_lower.contains(token))
+                }).count();
+
+                let prefix_ratio = matching_files as f32 / files.len() as f32;
+                if prefix_ratio >= 0.40 {
+                    return (0.75 + (prefix_ratio * 0.20)).clamp(0.0, 1.0);
+                }
+            }
+        }
+    }
+
+    // 4. Coerência por Categorias Heurísticas
     let mut category_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut total_classified = 0;
 
@@ -501,15 +592,55 @@ pub fn calculate_folder_coherence(files: &[&FileMeta], known_rules: &[Classifica
         return 0.50;
     }
 
-    // Calcula a proporção da categoria majoritária
     let max_count = category_counts.values().copied().max().unwrap_or(0);
     let majority_ratio = max_count as f32 / files.len() as f32;
 
-    // Se 70%+ dos arquivos são da mesma categoria, alta coerência
+    // Se os arquivos forem homogêneos, alta coerência
     majority_ratio.clamp(0.0, 1.0)
 }
 
-fn contains_any(text: &str, keywords: &[&str]) -> bool {
-    let normalized = text.replace(['-', '.', '(', ')'], "_");
-    keywords.iter().any(|&kw| normalized.contains(kw))
+/// Tokeniza o texto e verifica se algum dos keywords corresponde a um token de palavra completo.
+///
+/// Resolve o problema clássico de falsos positivos como:
+/// - "declaracao_escopo.md" NÃO dá match em "claro" (operadora de telecom)
+/// - "optimizer_runtime.bat" NÃO dá match em "tim" (operadora de telecom)
+/// - "survivor_game.bat" NÃO dá match em "vivo" (operadora de telecom)
+/// - "united_script.bat" NÃO dá match em "ted" (termo bancário)
+/// - "standard_agenda.md" NÃO dá match em "nda" (contrato)
+pub fn contains_word_token(text: &str, keywords: &[&str]) -> bool {
+    let lower_text = text.to_lowercase();
+    
+    // Normaliza separadores comuns para sublinhados
+    let normalized_text = lower_text.replace(['-', '.', '(', ')', '[', ']', '{', '}', ',', ';', ':', '+', '=', '~', '!', '@', '#', '$', '%', '^', '&', '*', '\'', '"', '/', '\\'], "_");
+    
+    // Extrai tokens de palavras completas
+    let tokens: Vec<&str> = normalized_text
+        .split('_')
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    for &kw in keywords {
+        let kw_lower = kw.to_lowercase();
+        
+        if kw_lower.contains('_') || kw_lower.contains(' ') {
+            // É uma expressão composta (ex: "conta_de_luz", "nota_fiscal", "fatura_cartao")
+            let kw_norm = kw_lower.replace(['-', ' '], "_");
+            // Verifica se a expressão aparece com limites de palavra
+            if normalized_text == kw_norm
+                || normalized_text.starts_with(&format!("{}_", kw_norm))
+                || normalized_text.ends_with(&format!("_{}", kw_norm))
+                || normalized_text.contains(&format!("_{}_", kw_norm))
+            {
+                return true;
+            }
+        } else {
+            // É uma palavra simples (ex: "tim", "vivo", "claro", "danfe", "boleto")
+            if tokens.contains(&kw_lower.as_str()) {
+                return true;
+            }
+        }
+    }
+
+    false
 }

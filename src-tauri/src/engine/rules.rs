@@ -28,13 +28,26 @@ pub fn learn_from_correction(correction: &UserCorrection, db: &Database) -> Resu
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or(filename.clone());
 
-        // 2. Extrair tokens significativos do nome do arquivo
+        // 2. Extrair tokens semânticos significativos do nome do arquivo
+        let generic_rule_blacklist = [
+            "teste", "test", "novo", "new", "script", "app", "main", "index", "file",
+            "arquivo", "doc", "documento", "document", "dados", "data", "info", "temp",
+            "tmp", "copia", "copy", "untitled", "sem_titulo", "backup", "padrao", "default",
+            "final", "versao", "version", "v1", "v2", "patch", "update", "run", "start",
+            "exec", "sample", "exemplo", "code", "codigo", "item", "lista", "tudo", "all",
+        ];
+
         let tokens: Vec<&str> = stem
             .split(|c: char| !c.is_alphanumeric())
-            .filter(|t| t.len() >= 3 && !t.chars().all(|c| c.is_ascii_digit()))
+            .filter(|t| {
+                let lower_t = t.to_lowercase();
+                t.len() >= 4
+                    && !t.chars().all(|c| c.is_ascii_digit())
+                    && !generic_rule_blacklist.contains(&lower_t.as_str())
+            })
             .collect();
 
-        // Se houver tokens claros no nome, criar regra de palavra-chave
+        // Se houver tokens claros e específicos no nome, criar regra de palavra-chave
         if let Some(&primary_keyword) = tokens.first() {
             db.upsert_learned_rule(
                 "filename_regex",
@@ -45,8 +58,14 @@ pub fn learn_from_correction(correction: &UserCorrection, db: &Database) -> Resu
             )?;
         }
 
-        // Se a extensao for representativa, tambem aprender associacao
-        if !ext.is_empty() && ext.len() <= 6 {
+        // Se a extensao for representativa e compatível com a categoria, aprender associacao
+        let is_code_ext = crate::engine::heuristics::is_code_or_script_extension(&ext);
+        let is_finance_cat = correction.new_category_id.to_lowercase().contains("boleto")
+            || correction.new_category_id.to_lowercase().contains("fatura")
+            || correction.new_category_id.to_lowercase().contains("recibo")
+            || correction.new_category_id.to_lowercase().contains("comprovante");
+
+        if !ext.is_empty() && ext.len() <= 6 && !(is_code_ext && is_finance_cat) {
             db.upsert_learned_rule(
                 "extension",
                 &ext,

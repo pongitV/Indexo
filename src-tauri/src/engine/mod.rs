@@ -271,4 +271,152 @@ mod tests {
         let date = content_extract::extract_exif_date(fake_path);
         assert_eq!(date, None);
     }
+
+    #[test]
+    fn test_scripts_and_markdown_not_classified_as_boletos() {
+        let rules: Vec<ClassificationRule> = Vec::new();
+
+        // 1. Arquivos de script com nomes que continham substrings de operadoras/bancos
+        let bat_runtime = FileMeta {
+            path: r"C:\Dev\optimizer_runtime.bat".to_string(),
+            filename: "optimizer_runtime.bat".to_string(),
+            extension_declared: Some("bat".to_string()),
+            extension_detected: Some("bat".to_string()),
+            size_bytes: 500,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let res1 = heuristics::classify_by_heuristics(&bat_runtime, &rules);
+        assert_eq!(res1.category_guess, Some("Código e Desenvolvimento".to_string()));
+
+        let bat_estimativa = FileMeta {
+            path: r"C:\Dev\estimativa_vendas.bat".to_string(),
+            filename: "estimativa_vendas.bat".to_string(),
+            extension_declared: Some("bat".to_string()),
+            extension_detected: Some("bat".to_string()),
+            size_bytes: 500,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let res2 = heuristics::classify_by_heuristics(&bat_estimativa, &rules);
+        assert_eq!(res2.category_guess, Some("Código e Desenvolvimento".to_string()));
+
+        let md_declaracao = FileMeta {
+            path: r"C:\Docs\declaracao_escopo.md".to_string(),
+            filename: "declaracao_escopo.md".to_string(),
+            extension_declared: Some("md".to_string()),
+            extension_detected: Some("md".to_string()),
+            size_bytes: 1200,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let res3 = heuristics::classify_by_heuristics(&md_declaracao, &rules);
+        assert_eq!(res3.category_guess, Some("Documentos e Documentação".to_string()));
+
+        let bat_survivor = FileMeta {
+            path: r"C:\Games\survivor_game.bat".to_string(),
+            filename: "survivor_game.bat".to_string(),
+            extension_declared: Some("bat".to_string()),
+            extension_detected: Some("bat".to_string()),
+            size_bytes: 400,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let res4 = heuristics::classify_by_heuristics(&bat_survivor, &rules);
+        assert_eq!(res4.category_guess, Some("Código e Desenvolvimento".to_string()));
+
+        // 2. Boletos reais em PDF continuam sendo perfeitamente detectados
+        let pdf_fatura_tim = FileMeta {
+            path: r"C:\Docs\fatura_tim_outubro.pdf".to_string(),
+            filename: "fatura_tim_outubro.pdf".to_string(),
+            extension_declared: Some("pdf".to_string()),
+            extension_detected: Some("pdf".to_string()),
+            size_bytes: 50000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let res5 = heuristics::classify_by_heuristics(&pdf_fatura_tim, &rules);
+        assert_eq!(res5.category_guess, Some("Boletos e Faturas".to_string()));
+
+        let pdf_conta_luz = FileMeta {
+            path: r"C:\Docs\conta_de_luz_enel_2024.pdf".to_string(),
+            filename: "conta_de_luz_enel_2024.pdf".to_string(),
+            extension_declared: Some("pdf".to_string()),
+            extension_detected: Some("pdf".to_string()),
+            size_bytes: 50000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let res6 = heuristics::classify_by_heuristics(&pdf_conta_luz, &rules);
+        assert_eq!(res6.category_guess, Some("Boletos e Faturas".to_string()));
+    }
+
+    #[test]
+    fn test_game_and_project_folders_coherence() {
+        let rules: Vec<ClassificationRule> = Vec::new();
+
+        // 1. Pasta de Jogo contendo arquivos de tipos diversos (.exe, .dll, .bat, .png, .wav)
+        let g_exe = FileMeta {
+            path: r"C:\Games\Zelda64\zelda.exe".to_string(),
+            filename: "zelda.exe".to_string(),
+            extension_declared: Some("exe".to_string()),
+            extension_detected: Some("exe".to_string()),
+            size_bytes: 5000000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let g_dll = FileMeta {
+            path: r"C:\Games\Zelda64\engine.dll".to_string(),
+            filename: "engine.dll".to_string(),
+            extension_declared: Some("dll".to_string()),
+            extension_detected: Some("dll".to_string()),
+            size_bytes: 2000000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let g_bat = FileMeta {
+            path: r"C:\Games\Zelda64\launch.bat".to_string(),
+            filename: "launch.bat".to_string(),
+            extension_declared: Some("bat".to_string()),
+            extension_detected: Some("bat".to_string()),
+            size_bytes: 100,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let g_png = FileMeta {
+            path: r"C:\Games\Zelda64\splash.png".to_string(),
+            filename: "splash.png".to_string(),
+            extension_declared: Some("png".to_string()),
+            extension_detected: Some("png".to_string()),
+            size_bytes: 400000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+
+        let game_coherence = heuristics::calculate_folder_coherence(&[&g_exe, &g_dll, &g_bat, &g_png], &rules);
+        assert_eq!(game_coherence, 0.98, "Pasta de jogo com executável e dll deve ter coerência máxima 0.98");
+
+        // 2. Projeto de código com package.json
+        let p_pkg = FileMeta {
+            path: r"C:\Projects\Indexo\package.json".to_string(),
+            filename: "package.json".to_string(),
+            extension_declared: Some("json".to_string()),
+            extension_detected: Some("json".to_string()),
+            size_bytes: 400,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let p_md = FileMeta {
+            path: r"C:\Projects\Indexo\README.md".to_string(),
+            filename: "README.md".to_string(),
+            extension_declared: Some("md".to_string()),
+            extension_detected: Some("md".to_string()),
+            size_bytes: 2000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+
+        let project_coherence = heuristics::calculate_folder_coherence(&[&p_pkg, &p_md], &rules);
+        assert_eq!(project_coherence, 0.98, "Projeto de código com package.json deve ter coerência máxima 0.98");
+    }
 }
