@@ -115,6 +115,36 @@ export interface MoveLogRecord {
   undone: number;
 }
 
+export interface SessionCategoryInfo {
+  id: string;
+  name: string;
+  color: string | null;
+  created_by: "auto" | "user";
+  file_count: number;
+}
+
+export interface SessionFileInfo {
+  file_id: string;
+  filename: string;
+  original_path: string;
+  category_name: string;
+  category_color: string | null;
+  size_bytes: number;
+  is_already_organized: boolean;
+  proposed_name?: string | null;
+}
+
+export interface SessionRenameInfo {
+  file_id: string;
+  original_name: string;
+  proposed_name: string;
+  final_name?: string | null;
+  from_path: string;
+  to_path: string;
+  applied: boolean;
+  undone: boolean;
+}
+
 export interface OrganizationSessionSummary {
   session_id: string;
   root_path: string;
@@ -124,8 +154,10 @@ export interface OrganizationSessionSummary {
   files_scanned: number;
   files_moved_count: number;
   undone_count: number;
-  categories_assigned: string[];
+  categories_assigned: SessionCategoryInfo[];
+  files: SessionFileInfo[];
   moves: MoveLogRecord[];
+  renames: SessionRenameInfo[];
 }
 
 export async function getCategoryHistory(categoryId: string): Promise<CategoryHistoryRecord[]> {

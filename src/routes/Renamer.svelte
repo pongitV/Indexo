@@ -16,6 +16,8 @@
     suggestSemanticNames,
     applyRenames,
     undoLastApply,
+    getOrganizationHistory,
+    undoSession,
     openInExplorer,
     openWithDefaultApp,
     getFilePreview,
@@ -28,6 +30,7 @@
     type FilePreviewData,
     type ScanProgressPayload,
     type ClassifyProgressPayload,
+    type OrganizationSessionSummary,
   } from "../lib/api";
   import FilePreviewModal from "../lib/FilePreviewModal.svelte";
 
@@ -81,6 +84,9 @@
   let showConfirmModal = false;
   let showEditModal = false;
   let showPreviewModal = false;
+  let showRenameHistoryModal = false;
+  let renameHistorySessions: OrganizationSessionSummary[] = [];
+  let loadingRenameHistory = false;
 
   let activeSuggestion: RenameSuggestion | null = null;
   let editInputName = "";
@@ -549,6 +555,30 @@
     }
   }
 
+  async function openRenameHistoryModal() {
+    loadingRenameHistory = true;
+    showRenameHistoryModal = true;
+    try {
+      const all = await getOrganizationHistory();
+      renameHistorySessions = all.filter((s) => s.renames.some((r) => r.applied) || s.files_moved_count > 0);
+    } catch (e: any) {
+      showToast("Erro ao carregar histórico de renomeações: " + e, "error");
+    } finally {
+      loadingRenameHistory = false;
+    }
+  }
+
+  async function handleUndoFromHistory(sessionId: string) {
+    try {
+      const count = await undoSession(sessionId);
+      showToast(`${count} arquivo(s) restaurados!`, "success");
+      await openRenameHistoryModal();
+      await updateSuggestions();
+    } catch (e: any) {
+      showToast("Erro ao desfazer renomeação: " + e, "error");
+    }
+  }
+
   function handleDragOver(e: DragEvent) {
     e.preventDefault();
     isDragging = true;
@@ -630,6 +660,18 @@
           <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
         </svg>
         {isUndoing ? $_("preview.undoing") : $_("renamer.undo")}
+      </button>
+
+      <button
+        class="secondary-btn"
+        title="Ver histórico de renomeações passadas"
+        on:click={openRenameHistoryModal}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        Histórico
       </button>
 
       <button
@@ -1181,6 +1223,112 @@
   onOpenWithDefaultApp={handleOpenWithDefaultApp}
   onOpenInExplorer={handleOpenExplorer}
 />
+
+<!-- Modal: Histórico de Renomeações -->
+{#if showRenameHistoryModal}
+  <div
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    on:click|self={() => (showRenameHistoryModal = false)}
+    on:keydown={(e) => e.key === "Escape" && (showRenameHistoryModal = false)}
+  >
+    <div class="modal-card rename-history-modal-card">
+      <div class="modal-header-row">
+        <div class="header-title-box">
+          <div class="title-with-pill">
+            <span class="history-icon-badge">✏️</span>
+            <h2>Histórico de Renomeações</h2>
+          </div>
+          <p class="modal-subtitle">
+            Consulte todas as operações de renomeação realizadas pelo Indexo e reverta quando necessário.
+          </p>
+        </div>
+        <button class="close-btn" on:click={() => (showRenameHistoryModal = false)}>✕</button>
+      </div>
+
+      <div class="history-modal-body">
+        {#if loadingRenameHistory}
+          <div class="loading-state">
+            <div class="mini-spinner"></div>
+            <span>Carregando histórico de renomeações...</span>
+          </div>
+        {:else if renameHistorySessions.length === 0}
+          <div class="empty-history-state">
+            <div class="empty-icon">📝</div>
+            <h3>Nenhuma renomeação aplicada</h3>
+            <p>Quando você aplicar renomeações aos seus arquivos, o histórico completo aparecerá aqui.</p>
+          </div>
+        {:else}
+          <div class="rename-history-list">
+            {#each renameHistorySessions as s (s.session_id)}
+              {@const appliedRenames = s.renames.filter((r) => r.applied)}
+              {@const isAllUndone = appliedRenames.length > 0 && appliedRenames.every((r) => r.undone)}
+
+              <div class="rename-session-item" class:is-undone={isAllUndone}>
+                <div class="rename-session-header">
+                  <div class="rename-session-meta">
+                    <span class="session-path-title">📁 {s.root_path}</span>
+                    <span class="session-time-tag">🕒 {formatDateTime(s.started_at)}</span>
+                    <span class="session-count-tag">
+                      {appliedRenames.length} {appliedRenames.length === 1 ? "arquivo renomeado" : "arquivos renomeados"}
+                    </span>
+                  </div>
+
+                  {#if appliedRenames.length > 0 && !isAllUndone}
+                    <button
+                      class="undo-batch-btn"
+                      title="Desfazer e restaurar nomes originais"
+                      on:click={() => handleUndoFromHistory(s.session_id)}
+                    >
+                      ↩️ Desfazer Renomeação
+                    </button>
+                  {:else if isAllUndone}
+                    <span class="undone-tag">Desfeito</span>
+                  {/if}
+                </div>
+
+                <div class="rename-files-table-wrap">
+                  <table class="history-renames-table">
+                    <thead>
+                      <tr>
+                        <th>Nome Anterior</th>
+                        <th>Novo Nome Aplicado</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each appliedRenames as r}
+                        <tr>
+                          <td class="orig-col"><span class="mono-text">{r.original_name}</span></td>
+                          <td class="new-col"><span class="mono-text applied">{r.final_name || r.proposed_name}</span></td>
+                          <td class="status-col">
+                            {#if r.undone}
+                              <span class="status-pill undone">Revertido</span>
+                            {:else}
+                              <span class="status-pill applied">Alterado</span>
+                            {/if}
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <div class="modal-actions">
+        <button class="primary-btn" on:click={() => (showRenameHistoryModal = false)}>
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .renamer-view-page {
@@ -2078,6 +2226,146 @@
     border-width: 4px;
     border-color: rgba(59, 130, 246, 0.2);
     border-top-color: var(--accent-primary);
+  }
+
+  /* Rename History Modal Styles */
+  .rename-history-modal-card {
+    max-width: 680px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .rename-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .rename-session-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .rename-session-item.is-undone {
+    opacity: 0.7;
+    border-style: dashed;
+  }
+
+  .rename-session-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .rename-session-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    flex-wrap: wrap;
+  }
+
+  .session-path-title {
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+  }
+
+  .session-time-tag, .session-count-tag {
+    color: var(--text-muted);
+  }
+
+  .undo-batch-btn {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 120ms ease;
+  }
+
+  .undo-batch-btn:hover {
+    background: #ef4444;
+    color: white;
+  }
+
+  .undone-tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.12);
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-full);
+  }
+
+  .rename-files-table-wrap {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .history-renames-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+  }
+
+  .history-renames-table th {
+    background: rgba(0, 0, 0, 0.08);
+    padding: 0.4rem 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    text-align: left;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .history-renames-table td {
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .history-renames-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .mono-text {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+  }
+
+  .mono-text.applied {
+    color: #10b981;
+    font-weight: 600;
+  }
+
+  .status-pill {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.1rem 0.45rem;
+    border-radius: var(--radius-full);
+    display: inline-block;
+  }
+
+  .status-pill.applied {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+  }
+
+  .status-pill.undone {
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
   }
 
   @keyframes spin {

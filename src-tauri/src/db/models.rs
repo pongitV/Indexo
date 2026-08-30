@@ -93,6 +93,39 @@ pub struct CategoryHistoryRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCategoryInfo {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+    pub created_by: String, // "auto" | "user"
+    pub file_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionFileInfo {
+    pub file_id: String,
+    pub filename: String,
+    pub original_path: String,
+    pub category_name: String,
+    pub category_color: Option<String>,
+    pub size_bytes: i64,
+    pub is_already_organized: bool,
+    pub proposed_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionRenameInfo {
+    pub file_id: String,
+    pub original_name: String,
+    pub proposed_name: String,
+    pub final_name: Option<String>,
+    pub from_path: String,
+    pub to_path: String,
+    pub applied: bool,
+    pub undone: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrganizationSessionSummary {
     pub session_id: String,
     pub root_path: String,
@@ -102,6 +135,8 @@ pub struct OrganizationSessionSummary {
     pub files_scanned: i64,
     pub files_moved_count: usize,
     pub undone_count: usize,
-    pub categories_assigned: Vec<String>,
+    pub categories_assigned: Vec<SessionCategoryInfo>,
+    pub files: Vec<SessionFileInfo>,
     pub moves: Vec<MoveLogRecord>,
+    pub renames: Vec<SessionRenameInfo>,
 }

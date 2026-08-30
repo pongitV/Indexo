@@ -6,13 +6,25 @@
     undoSession,
     openInExplorer,
     type OrganizationSessionSummary,
+    type SessionFileInfo,
+    type SessionCategoryInfo,
+    type SessionRenameInfo,
   } from "../lib/api";
   import { currentView, showToast } from "../lib/stores";
 
   let sessions: OrganizationSessionSummary[] = [];
   let isLoading: boolean = true;
   let searchQuery: string = "";
-  let expandedSessions: Set<string> = new Set();
+
+  // Session active tab: map from session_id to active tab
+  // tab options: 'tree' | 'categories' | 'tags' | 'moves' | 'renames'
+  type TabType = "tree" | "categories" | "tags" | "moves" | "renames";
+  let sessionTabs: Record<string, TabType> = {};
+  let sessionExpanded: Record<string, boolean> = {};
+
+  // Filter for renames tab in each session: 'all' | 'applied' | 'preview'
+  let renameFilters: Record<string, "all" | "applied" | "preview"> = {};
+
   let undoingSessionId: string | null = null;
   let confirmingUndoSession: OrganizationSessionSummary | null = null;
 
@@ -24,6 +36,18 @@
     isLoading = true;
     try {
       sessions = await getOrganizationHistory();
+      // Inicializar abas default para cada sessão
+      for (const s of sessions) {
+        if (!sessionTabs[s.session_id]) {
+          sessionTabs[s.session_id] = s.files_moved_count > 0 ? "moves" : "tree";
+        }
+        if (sessionExpanded[s.session_id] === undefined) {
+          sessionExpanded[s.session_id] = true;
+        }
+        if (!renameFilters[s.session_id]) {
+          renameFilters[s.session_id] = "all";
+        }
+      }
     } catch (err: any) {
       showToast("Erro ao carregar histórico: " + err, "error");
     } finally {
@@ -31,13 +55,16 @@
     }
   }
 
+  function setTab(sessionId: string, tab: TabType) {
+    sessionTabs[sessionId] = tab;
+    sessionExpanded[sessionId] = true;
+    sessionTabs = { ...sessionTabs };
+    sessionExpanded = { ...sessionExpanded };
+  }
+
   function toggleExpand(sessionId: string) {
-    if (expandedSessions.has(sessionId)) {
-      expandedSessions.delete(sessionId);
-    } else {
-      expandedSessions.add(sessionId);
-    }
-    expandedSessions = new Set(expandedSessions);
+    sessionExpanded[sessionId] = !sessionExpanded[sessionId];
+    sessionExpanded = { ...sessionExpanded };
   }
 
   function formatDateTime(dateStr: string): string {
@@ -54,6 +81,14 @@
     } catch {
       return dateStr;
     }
+  }
+
+  function formatBytes(bytes: number): string {
+    if (!bytes || bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   }
 
   function promptUndo(session: OrganizationSessionSummary) {
@@ -85,12 +120,32 @@
     }
   }
 
+  // Agrupa os arquivos da sessão em árvore por categoria
+  function buildTreeStructure(files: SessionFileInfo[]): Record<string, SessionFileInfo[]> {
+    const tree: Record<string, SessionFileInfo[]> = {};
+    for (const f of files) {
+      const cat = f.category_name || "Outros Arquivos";
+      if (!tree[cat]) {
+        tree[cat] = [];
+      }
+      tree[cat].push(f);
+    }
+    return tree;
+  }
+
+  function getFilteredRenames(renames: SessionRenameInfo[], filter: string = "all"): SessionRenameInfo[] {
+    if (filter === "applied") return renames.filter((r) => r.applied);
+    if (filter === "preview") return renames.filter((r) => !r.applied);
+    return renames;
+  }
+
   $: filteredSessions = sessions.filter((s) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
       s.root_path.toLowerCase().includes(q) ||
-      s.categories_assigned.some((c) => c.toLowerCase().includes(q)) ||
+      s.categories_assigned.some((c) => c.name.toLowerCase().includes(q)) ||
+      s.files.some((f) => f.filename.toLowerCase().includes(q) || f.category_name.toLowerCase().includes(q)) ||
       s.moves.some((m) => m.from_path.toLowerCase().includes(q) || m.to_path.toLowerCase().includes(q))
     );
   });
@@ -101,11 +156,12 @@
   <div class="history-header">
     <div class="header-titles">
       <div class="title-with-badge">
+        <span class="history-main-icon">📜</span>
         <h1>Histórico de Organizações</h1>
         <span class="history-count-badge">{sessions.length}</span>
       </div>
       <p class="subtitle">
-        Auditoria de todas as organizações realizadas, com tags, categorias criadas e opção de desfazer (Undo).
+        Auditoria completa de sessões: visualize árvores sugeridas, categorias, tags, arquivos movidos e histórico de renomeações.
       </p>
     </div>
 
@@ -117,7 +173,7 @@
         </svg>
         <input
           type="text"
-          placeholder="Buscar por pasta, tag ou arquivo..."
+          placeholder="Buscar por pasta, tag, categoria ou arquivo..."
           bind:value={searchQuery}
           class="search-input"
         />
@@ -168,9 +224,11 @@
     {:else}
       <div class="sessions-list">
         {#each filteredSessions as session (session.session_id)}
-          {@const isExpanded = expandedSessions.has(session.session_id)}
+          {@const isExpanded = sessionExpanded[session.session_id] ?? true}
+          {@const currentTab = sessionTabs[session.session_id] || (session.files_moved_count > 0 ? "moves" : "tree")}
           {@const isAllUndone = session.files_moved_count > 0 && session.undone_count === session.files_moved_count}
           {@const isPartialUndone = session.undone_count > 0 && session.undone_count < session.files_moved_count}
+          {@const tree = buildTreeStructure(session.files)}
 
           <div class="session-card" class:is-undone={isAllUndone}>
             <!-- Top Card Bar -->
@@ -181,7 +239,7 @@
                   <span class="folder-path" title={session.root_path}>{session.root_path}</span>
                   <button
                     class="icon-action-btn"
-                    title="Abrir no Explorador"
+                    title="Abrir no Explorador de Arquivos"
                     on:click={() => handleOpenExplorer(session.root_path)}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -196,8 +254,14 @@
                   <span class="meta-time">🕒 {formatDateTime(session.started_at)}</span>
                   <span class="meta-separator">•</span>
                   <span class="meta-files">
-                    📦 {session.files_moved_count} {session.files_moved_count === 1 ? "arquivo movido" : "arquivos movidos"}
+                    📄 {session.files.length} {session.files.length === 1 ? "arquivo escaneado" : "arquivos escaneados"}
                   </span>
+                  {#if session.files_moved_count > 0}
+                    <span class="meta-separator">•</span>
+                    <span class="meta-files moved-count">
+                      📦 {session.files_moved_count} {session.files_moved_count === 1 ? "movido" : "movidos"}
+                    </span>
+                  {/if}
                 </div>
               </div>
 
@@ -224,14 +288,14 @@
                       Concluído
                     </span>
                   {:else}
-                    <span class="status-badge info">Varredura Concluída</span>
+                    <span class="status-badge info">Análise / Sugestão</span>
                   {/if}
                 </div>
 
                 {#if session.files_moved_count > 0 && !isAllUndone}
                   <button
                     class="undo-action-btn"
-                    title="Desfazer todos os arquivos desta organização"
+                    title="Desfazer e mover arquivos de volta para a pasta de origem"
                     disabled={undoingSessionId === session.session_id}
                     on:click={() => promptUndo(session)}
                   >
@@ -252,7 +316,7 @@
                   class="expand-btn"
                   class:active={isExpanded}
                   on:click={() => toggleExpand(session.session_id)}
-                  title={isExpanded ? "Recolher detalhes" : "Expandir arquivos"}
+                  title={isExpanded ? "Recolher detalhes" : "Expandir detalhes da sessão"}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points={isExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
@@ -261,32 +325,147 @@
               </div>
             </div>
 
-            <!-- Categories / Tags created in this session -->
-            {#if session.categories_assigned && session.categories_assigned.length > 0}
-              <div class="session-categories-section">
-                <span class="section-label">Tags / Categorias da Sessão:</span>
-                <div class="category-tags-wrap">
-                  {#each session.categories_assigned as catName}
-                    <span class="category-chip">
-                      <span class="chip-dot"></span>
-                      {catName}
-                    </span>
-                  {/each}
-                </div>
-              </div>
-            {/if}
+            <!-- Session Navigation Tabs Bar (3 botões obrigatórios + 4º se movido + 5º renomeações) -->
+            <div class="session-tabs-bar">
+              <button
+                class="session-tab-btn"
+                class:active={currentTab === "tree" && isExpanded}
+                on:click={() => setTab(session.session_id, "tree")}
+              >
+                <span>🌳</span>
+                <span>Árvore Sugerida</span>
+                <span class="tab-badge">{Object.keys(tree).length}</span>
+              </button>
 
-            <!-- Expandable Move Log Details -->
+              <button
+                class="session-tab-btn"
+                class:active={currentTab === "categories" && isExpanded}
+                on:click={() => setTab(session.session_id, "categories")}
+              >
+                <span>📁</span>
+                <span>Categorias</span>
+                <span class="tab-badge">{session.categories_assigned.length}</span>
+              </button>
+
+              <button
+                class="session-tab-btn"
+                class:active={currentTab === "tags" && isExpanded}
+                on:click={() => setTab(session.session_id, "tags")}
+              >
+                <span>🏷️</span>
+                <span>Tags</span>
+                <span class="tab-badge">{session.categories_assigned.length}</span>
+              </button>
+
+              {#if session.files_moved_count > 0}
+                <button
+                  class="session-tab-btn highlight-moves"
+                  class:active={currentTab === "moves" && isExpanded}
+                  on:click={() => setTab(session.session_id, "moves")}
+                >
+                  <span>📦</span>
+                  <span>Arquivos Movidos</span>
+                  <span class="tab-badge">{session.moves.length}</span>
+                </button>
+              {/if}
+
+              <button
+                class="session-tab-btn"
+                class:active={currentTab === "renames" && isExpanded}
+                on:click={() => setTab(session.session_id, "renames")}
+              >
+                <span>✏️</span>
+                <span>Nomes Alterados</span>
+                <span class="tab-badge">{session.renames.length}</span>
+              </button>
+            </div>
+
+            <!-- Expandable Body Content according to selected tab -->
             {#if isExpanded}
-              <div class="session-details-drawer">
-                <div class="drawer-header">
-                  <h4>Arquivos Organizados ({session.moves.length})</h4>
-                </div>
+              <div class="session-tab-body">
+                <!-- 1. TAB: ÁRVORE PROPOSTA -->
+                {#if currentTab === "tree"}
+                  <div class="tree-tab-content">
+                    <div class="tab-info-header">
+                      <span>Estrutura de pastas e arquivos sugerida pela análise semântica:</span>
+                    </div>
 
-                <div class="moves-table-container">
-                  {#if session.moves.length === 0}
-                    <div class="no-moves-msg">Nenhum arquivo físico foi movido nesta sessão.</div>
-                  {:else}
+                    <div class="tree-folder-list">
+                      {#each Object.entries(tree) as [catName, files]}
+                        <div class="tree-category-block">
+                          <div class="tree-cat-header">
+                            <span class="tree-folder-icon">📂</span>
+                            <span class="tree-cat-name">{catName}</span>
+                            <span class="tree-files-count">{files.length} {files.length === 1 ? "arquivo" : "arquivos"}</span>
+                          </div>
+
+                          <div class="tree-files-list">
+                            {#each files as file}
+                              <div class="tree-file-row">
+                                <span class="tree-file-icon">📄</span>
+                                <span class="tree-file-name" title={file.filename}>{file.filename}</span>
+                                <span class="tree-file-size">{formatBytes(file.size_bytes)}</span>
+                                {#if file.is_already_organized}
+                                  <span class="organized-tag">Preservado</span>
+                                {/if}
+                              </div>
+                            {/each}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+
+                <!-- 2. TAB: CATEGORIAS -->
+                {:else if currentTab === "categories"}
+                  <div class="categories-tab-content">
+                    <div class="tab-info-header">
+                      <span>Categorias identificadas ou criadas automaticamente para esta sessão:</span>
+                    </div>
+
+                    <div class="categories-grid">
+                      {#each session.categories_assigned as cat}
+                        <div class="category-card-mini">
+                          <div class="cat-card-top">
+                            <span class="cat-dot" style="background: {cat.color || 'var(--accent-primary)'};"></span>
+                            <span class="cat-name">{cat.name}</span>
+                            <span class="cat-type-pill {cat.created_by}">
+                              {cat.created_by === "user" ? "Manual" : "Auto IA"}
+                            </span>
+                          </div>
+                          <div class="cat-card-bottom">
+                            <span class="cat-file-count">📊 {cat.file_count} {cat.file_count === 1 ? "arquivo" : "arquivos"}</span>
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+
+                <!-- 3. TAB: TAGS -->
+                {:else if currentTab === "tags"}
+                  <div class="tags-tab-content">
+                    <div class="tab-info-header">
+                      <span>Tags semânticas associadas aos arquivos desta pasta:</span>
+                    </div>
+
+                    <div class="tags-cloud-wrap">
+                      {#each session.categories_assigned as tag}
+                        <div class="tag-badge-pill" style="border-color: {tag.color || 'var(--border-medium)'};">
+                          <span class="tag-bullet" style="background: {tag.color || 'var(--accent-primary)'};"></span>
+                          <span class="tag-title">{tag.name}</span>
+                          <span class="tag-count-bubble">{tag.file_count}</span>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+
+                <!-- 4. TAB: ARQUIVOS MOVIDOS -->
+                {:else if currentTab === "moves"}
+                  <div class="moves-tab-content">
+                    <div class="tab-info-header">
+                      <span>Registro físico de arquivos movidos no disco:</span>
+                    </div>
+
                     <div class="moves-list">
                       {#each session.moves as move}
                         <div class="move-item-row" class:is-move-undone={move.undone === 1}>
@@ -317,8 +496,90 @@
                         </div>
                       {/each}
                     </div>
-                  {/if}
-                </div>
+                  </div>
+
+                <!-- 5. TAB: NOMES ALTERADOS (PREVIEW E REALMENTE ALTERADOS) -->
+                {:else if currentTab === "renames"}
+                  <div class="renames-tab-content">
+                    <div class="renames-tab-header">
+                      <span class="tab-info-text">
+                        Auditoria de renomeação: veja propostas semânticas geradas (Preview) e nomes aplicados no disco.
+                      </span>
+
+                      <!-- Sub-filter -->
+                      <div class="rename-subfilters">
+                        <button
+                          class="subfilter-btn"
+                          class:active={renameFilters[session.session_id] === "all"}
+                          on:click={() => { renameFilters[session.session_id] = "all"; renameFilters = { ...renameFilters }; }}
+                        >
+                          Todos ({session.renames.length})
+                        </button>
+                        <button
+                          class="subfilter-btn"
+                          class:active={renameFilters[session.session_id] === "applied"}
+                          on:click={() => { renameFilters[session.session_id] = "applied"; renameFilters = { ...renameFilters }; }}
+                        >
+                          Realmente Alterados ({session.renames.filter((r) => r.applied).length})
+                        </button>
+                        <button
+                          class="subfilter-btn"
+                          class:active={renameFilters[session.session_id] === "preview"}
+                          on:click={() => { renameFilters[session.session_id] = "preview"; renameFilters = { ...renameFilters }; }}
+                        >
+                          Apenas Preview ({session.renames.filter((r) => !r.applied).length})
+                        </button>
+                      </div>
+                    </div>
+
+                    {#if getFilteredRenames(session.renames, renameFilters[session.session_id]).length === 0}
+                      <div class="no-renames-msg">
+                        Nenhum arquivo correspondente ao filtro selecionado.
+                      </div>
+                    {:else}
+                      <div class="renames-table-container">
+                        <table class="renames-table">
+                          <thead>
+                            <tr>
+                              <th>Nome Original</th>
+                              <th>Preview Sugerido</th>
+                              <th>Nome Final Aplicado</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {#each getFilteredRenames(session.renames, renameFilters[session.session_id]) as r}
+                              <tr>
+                                <td class="col-original">
+                                  <span class="filename-mono">{r.original_name}</span>
+                                </td>
+                                <td class="col-preview">
+                                  <span class="preview-mono">{r.proposed_name}</span>
+                                </td>
+                                <td class="col-final">
+                                  {#if r.applied && r.final_name}
+                                    <span class="applied-mono">{r.final_name}</span>
+                                  {:else}
+                                    <span class="not-applied-label">— (Não aplicado)</span>
+                                  {/if}
+                                </td>
+                                <td class="col-status">
+                                  {#if r.undone}
+                                    <span class="rename-badge undone">Desfeito</span>
+                                  {:else if r.applied}
+                                    <span class="rename-badge applied">Alterado no Disco</span>
+                                  {:else}
+                                    <span class="rename-badge preview">Sugestão / Preview</span>
+                                  {/if}
+                                </td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>
@@ -383,7 +644,11 @@
   .title-with-badge {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.6rem;
+  }
+
+  .history-main-icon {
+    font-size: 1.4rem;
   }
 
   .title-with-badge h1 {
@@ -436,7 +701,7 @@
     padding: 0.5rem 2rem 0.5rem 2.25rem;
     font-size: 0.85rem;
     color: var(--text-primary);
-    width: 280px;
+    width: 300px;
     transition: all 150ms ease;
   }
 
@@ -543,7 +808,7 @@
   .sessions-list {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.25rem;
   }
 
   .session-card {
@@ -552,16 +817,15 @@
     border-radius: var(--radius-lg);
     overflow: hidden;
     transition: all 150ms ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   }
 
   .session-card:hover {
     border-color: var(--border-strong, #475569);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 
   .session-card.is-undone {
-    opacity: 0.75;
-    border-style: dashed;
+    opacity: 0.8;
   }
 
   .session-card-header {
@@ -571,6 +835,7 @@
     padding: 1rem 1.25rem;
     gap: 1rem;
     flex-wrap: wrap;
+    background: var(--bg-secondary);
   }
 
   .session-main-info {
@@ -624,6 +889,11 @@
     gap: 0.5rem;
     font-size: 0.8rem;
     color: var(--text-muted);
+  }
+
+  .moved-count {
+    color: var(--accent-primary);
+    font-weight: 600;
   }
 
   .session-header-actions {
@@ -709,75 +979,246 @@
     color: var(--text-primary);
   }
 
-  .session-categories-section {
-    padding: 0.5rem 1.25rem 0.85rem;
-    border-top: 1px solid var(--border-subtle);
+  /* Segmented Session Tabs Bar */
+  .session-tabs-bar {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    background: rgba(0, 0, 0, 0.08);
+    gap: 0.35rem;
+    padding: 0.35rem 1rem;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    overflow-x: auto;
   }
 
-  .section-label {
-    font-size: 0.76rem;
+  .session-tab-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    padding: 0.35rem 0.65rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 120ms ease;
+    white-space: nowrap;
+  }
+
+  .session-tab-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .session-tab-btn.active {
+    background: var(--bg-secondary);
+    border-color: var(--border-medium);
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+
+  .session-tab-btn.highlight-moves.active {
+    border-color: rgba(59, 130, 246, 0.4);
+    color: var(--accent-primary);
+  }
+
+  .tab-badge {
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-full);
+    padding: 0.05rem 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  /* Tab Body Container */
+  .session-tab-body {
+    padding: 1rem 1.25rem;
+    background: var(--bg-primary);
+    animation: fadeIn 150ms ease-out;
+  }
+
+  .tab-info-header {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
 
-  .category-tags-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-  }
-
-  .category-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-primary);
-    font-size: 0.76rem;
-    font-weight: 600;
-    padding: 0.15rem 0.55rem;
-    border-radius: var(--radius-full);
-  }
-
-  .chip-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent-primary);
-  }
-
-  .session-details-drawer {
-    border-top: 1px solid var(--border-medium);
-    background: var(--bg-primary);
-    padding: 1rem 1.25rem;
+  /* 1. Tree View Styles */
+  .tree-folder-list {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    animation: fadeIn 150ms ease-out;
   }
 
-  .drawer-header h4 {
-    margin: 0;
+  .tree-category-block {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .tree-cat-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.85rem;
+    background: rgba(0, 0, 0, 0.06);
+    border-bottom: 1px solid var(--border-subtle);
     font-size: 0.85rem;
     font-weight: 700;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    color: var(--text-primary);
   }
 
+  .tree-files-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: normal;
+    margin-left: auto;
+  }
+
+  .tree-files-list {
+    display: flex;
+    flex-direction: column;
+    padding: 0.35rem 0.5rem;
+    gap: 0.25rem;
+  }
+
+  .tree-file-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    font-family: var(--font-mono);
+  }
+
+  .tree-file-row:hover {
+    background: var(--bg-hover);
+  }
+
+  .tree-file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+  }
+
+  .tree-file-size {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .organized-tag {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-sm);
+  }
+
+  /* 2. Categories Grid Styles */
+  .categories-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .category-card-mini {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .cat-card-top {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .cat-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .cat-name {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cat-type-pill {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-full);
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+  }
+
+  .cat-file-count {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+  }
+
+  /* 3. Tags Cloud Styles */
+  .tags-cloud-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .tag-badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-medium);
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-full);
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .tag-bullet {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .tag-count-bubble {
+    background: var(--bg-tertiary);
+    font-size: 0.72rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: var(--radius-full);
+    color: var(--text-muted);
+    font-weight: 700;
+  }
+
+  /* 4. Moves List Styles */
   .moves-list {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    max-height: 260px;
+    max-height: 320px;
     overflow-y: auto;
     padding-right: 0.25rem;
     scrollbar-width: thin;
@@ -858,11 +1299,136 @@
     border-radius: var(--radius-sm);
   }
 
-  .no-moves-msg {
-    font-size: 0.82rem;
+  /* 5. Renames Table Styles */
+  .renames-tab-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .tab-info-text {
+    font-size: 0.8rem;
     color: var(--text-muted);
+  }
+
+  .rename-subfilters {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .subfilter-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    padding: 0.25rem 0.55rem;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 120ms ease;
+  }
+
+  .subfilter-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .subfilter-btn.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: white;
+  }
+
+  .renames-table-container {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+  }
+
+  .renames-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    text-align: left;
+  }
+
+  .renames-table th {
+    background: rgba(0, 0, 0, 0.12);
+    padding: 0.55rem 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .renames-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+  }
+
+  .renames-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .filename-mono {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+  }
+
+  .preview-mono {
+    font-family: var(--font-mono);
+    color: #8b5cf6;
+    font-weight: 600;
+  }
+
+  .applied-mono {
+    font-family: var(--font-mono);
+    color: #10b981;
+    font-weight: 700;
+  }
+
+  .not-applied-label {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .rename-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-full);
+  }
+
+  .rename-badge.applied {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+  }
+
+  .rename-badge.preview {
+    background: rgba(139, 92, 246, 0.12);
+    color: #8b5cf6;
+  }
+
+  .rename-badge.undone {
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+  }
+
+  .no-renames-msg {
     text-align: center;
-    padding: 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: 2rem;
   }
 
   /* Modal */

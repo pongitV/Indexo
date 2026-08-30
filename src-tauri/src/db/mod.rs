@@ -554,13 +554,11 @@ impl Database {
         Ok(())
     }
 
-    /// Busca o histórico de todas as sessões de organização com detalhes de tags e arquivos
+    /// Busca o histórico de todas as sessões de organização com detalhes de árvore, categorias, tags, arquivos e renomeações
     pub fn get_organization_history(&self) -> anyhow::Result<Vec<models::OrganizationSessionSummary>> {
         let mut stmt = self.conn.prepare(
             "SELECT s.id, s.root_path, s.started_at, s.finished_at, s.status, s.files_scanned
              FROM scan_sessions s
-             WHERE EXISTS (SELECT 1 FROM move_log m WHERE m.session_id = s.id)
-                OR s.status = 'done'
              ORDER BY s.started_at DESC",
         )?;
 
@@ -575,12 +573,23 @@ impl Database {
             ))
         })?;
 
+        let default_rename_config = crate::engine::renamer::RenameConfig {
+            preset: "semantic".to_string(),
+            separator: "_".to_string(),
+            case_style: "title".to_string(),
+            date_format: "none".to_string(),
+            include_category: true,
+            remove_noise: true,
+            custom_template: None,
+            structure_order: None,
+        };
+
         let mut summaries = Vec::new();
 
         for s in session_rows {
             let (session_id, root_path, started_at, finished_at, status, files_scanned) = s?;
 
-            // Buscar todos os moves da sessão
+            // 1. Buscar todos os moves da sessão
             let mut move_stmt = self.conn.prepare(
                 "SELECT id, session_id, file_id, from_path, to_path, moved_at, undone
                  FROM move_log WHERE session_id = ?1 ORDER BY moved_at DESC",
@@ -609,20 +618,118 @@ impl Database {
             }
             let files_moved_count = moves.len();
 
-            // Buscar categorias e tags atribuídas nesta sessão
-            let mut cat_stmt = self.conn.prepare(
-                "SELECT DISTINCT c.name
-                 FROM file_categories fc
-                 JOIN categories c ON c.id = fc.category_id
-                 JOIN files f ON f.id = fc.file_id
+            // 2. Buscar todos os arquivos desta sessão com suas categorias
+            let mut file_stmt = self.conn.prepare(
+                "SELECT f.id, f.filename, f.original_path, f.size_bytes,
+                        COALESCE(c.id, ''), COALESCE(c.name, 'Outros Arquivos'), c.color, COALESCE(c.created_by, 'auto')
+                 FROM files f
+                 LEFT JOIN file_categories fc ON fc.file_id = f.id
+                 LEFT JOIN categories c ON c.id = fc.category_id
                  WHERE f.session_id = ?1
-                 ORDER BY c.name ASC",
+                 ORDER BY f.filename ASC",
             )?;
 
-            let cat_rows = cat_stmt.query_map(params![session_id], |row| row.get::<_, String>(0))?;
-            let mut categories_assigned = Vec::new();
-            for c in cat_rows {
-                categories_assigned.push(c?);
+            let mut files = Vec::new();
+            let mut cat_map: std::collections::HashMap<String, models::SessionCategoryInfo> = std::collections::HashMap::new();
+
+            let file_rows = file_stmt.query_map(params![session_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, String>(7)?,
+                ))
+            })?;
+
+            for fr in file_rows {
+                let (f_id, fname, orig_path, size, cat_id, cat_name, cat_color, created_by) = fr?;
+
+                // Gerar sugestão semântica de preview
+                let proposed = crate::engine::renamer::generate_proposed_name(
+                    &fname,
+                    &cat_name,
+                    None,
+                    None,
+                    &default_rename_config,
+                );
+
+                let is_already_org = crate::engine::heuristics::detect_already_organized_folder(&orig_path, &root_path).is_some();
+
+                // Agrupar categorias
+                let entry = cat_map.entry(cat_name.clone()).or_insert_with(|| models::SessionCategoryInfo {
+                    id: cat_id.clone(),
+                    name: cat_name.clone(),
+                    color: cat_color.clone(),
+                    created_by: created_by.clone(),
+                    file_count: 0,
+                });
+                entry.file_count += 1;
+
+                files.push(models::SessionFileInfo {
+                    file_id: f_id,
+                    filename: fname,
+                    original_path: orig_path,
+                    category_name: cat_name,
+                    category_color: cat_color,
+                    size_bytes: size,
+                    is_already_organized: is_already_org,
+                    proposed_name: Some(proposed),
+                });
+            }
+
+            let mut categories_assigned: Vec<models::SessionCategoryInfo> = cat_map.into_values().collect();
+            categories_assigned.sort_by(|a, b| b.file_count.cmp(&a.file_count));
+
+            // 3. Mapear renames a partir dos arquivos e do move_log
+            let mut move_map: std::collections::HashMap<String, &models::MoveLogRecord> = std::collections::HashMap::new();
+            for m in &moves {
+                move_map.insert(m.file_id.clone(), m);
+            }
+
+            let mut renames = Vec::new();
+            for f in &files {
+                let proposed_name = f.proposed_name.clone().unwrap_or_else(|| f.filename.clone());
+                if let Some(m) = move_map.get(&f.file_id) {
+                    let from_name = std::path::Path::new(&m.from_path)
+                        .file_name()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| f.filename.clone());
+                    let to_name = std::path::Path::new(&m.to_path)
+                        .file_name()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| proposed_name.clone());
+
+                    renames.push(models::SessionRenameInfo {
+                        file_id: f.file_id.clone(),
+                        original_name: from_name,
+                        proposed_name: proposed_name.clone(),
+                        final_name: Some(to_name),
+                        from_path: m.from_path.clone(),
+                        to_path: m.to_path.clone(),
+                        applied: true,
+                        undone: m.undone != 0,
+                    });
+                } else {
+                    let parent_p = std::path::Path::new(&f.original_path)
+                        .parent()
+                        .map(|p| p.join(&proposed_name).to_string_lossy().to_string())
+                        .unwrap_or_default();
+
+                    renames.push(models::SessionRenameInfo {
+                        file_id: f.file_id.clone(),
+                        original_name: f.filename.clone(),
+                        proposed_name: proposed_name.clone(),
+                        final_name: None,
+                        from_path: f.original_path.clone(),
+                        to_path: parent_p,
+                        applied: false,
+                        undone: false,
+                    });
+                }
             }
 
             summaries.push(models::OrganizationSessionSummary {
@@ -635,7 +742,9 @@ impl Database {
                 files_moved_count,
                 undone_count,
                 categories_assigned,
+                files,
                 moves,
+                renames,
             });
         }
 
@@ -826,7 +935,9 @@ mod tests {
         assert!(!org_history.is_empty());
         let session_record = org_history.iter().find(|s| s.session_id == session_id).unwrap();
         assert_eq!(session_record.files_moved_count, 1);
-        assert!(session_record.categories_assigned.contains(&"Contratos".to_string()));
+        assert!(session_record.categories_assigned.iter().any(|c| c.name == "Contratos"));
+        assert_eq!(session_record.files.len(), 2);
+        assert_eq!(session_record.renames.len(), 2);
 
         // 9. Limpeza e expurgo de categorias automáticas
         let auto_unused = db.get_or_create_category("Auto Tag Orfa", "auto", None).unwrap();
