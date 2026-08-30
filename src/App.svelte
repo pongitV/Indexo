@@ -131,7 +131,7 @@
             <line x1="81" y1="64" x2="91" y2="64" stroke="#D0A215" stroke-width="1.5" />
 
             <!-- Bottom shelf support / base -->
-            <rect x="3" y="73" width="94" height="6" rx="3" fill="#282726" stroke="#3AA99F" stroke-width="1.2" />
+            <rect x="3" y="73" width="94" height="6" rx="3" fill="#543A22" stroke="#382412" stroke-width="1.5" />
           </svg>
         </div>
         <div class="logo-text">
@@ -511,7 +511,7 @@
                 <line x1="81" y1="64" x2="91" y2="64" stroke="#D0A215" stroke-width="1.5" />
 
                 <!-- Bottom shelf support / base -->
-                <rect x="3" y="73" width="94" height="6" rx="3" fill="#282726" stroke="#3AA99F" stroke-width="1.2" />
+                <rect x="3" y="73" width="94" height="6" rx="3" fill="#543A22" stroke="#382412" stroke-width="1.5" />
               </svg>
             </div>
           </div>
