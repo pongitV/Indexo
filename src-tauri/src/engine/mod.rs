@@ -199,5 +199,76 @@ mod tests {
         let temp_file = r"C:\Users\Test\Meus Arquivos\Temp\teste.txt";
         let temp_detected = heuristics::detect_already_organized_folder(temp_file, root);
         assert_eq!(temp_detected, None);
+
+        // Pasta provisória "Nova Pasta (1)"
+        let prov_file = r"C:\Users\Test\Meus Arquivos\Nova Pasta (1)\foto.png";
+        let prov_detected = heuristics::detect_already_organized_folder(prov_file, root);
+        assert_eq!(prov_detected, None);
+    }
+
+    #[test]
+    fn test_calculate_folder_coherence() {
+        let f1 = FileMeta {
+            path: r"C:\Test\Fotos\foto1.jpg".to_string(),
+            filename: "foto1.jpg".to_string(),
+            extension_declared: Some("jpg".to_string()),
+            extension_detected: Some("jpg".to_string()),
+            size_bytes: 1000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let f2 = FileMeta {
+            path: r"C:\Test\Fotos\foto2.jpg".to_string(),
+            filename: "foto2.jpg".to_string(),
+            extension_declared: Some("jpg".to_string()),
+            extension_detected: Some("jpg".to_string()),
+            size_bytes: 1000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let rules: Vec<ClassificationRule> = Vec::new();
+        let coherence = heuristics::calculate_folder_coherence(&[&f1, &f2], &rules);
+        assert!(coherence >= 0.70, "Pasta homogênea de fotos deve ter alta coerência");
+    }
+
+    #[test]
+    fn test_windows_reserved_names_sanitization() {
+        assert_eq!(renamer::sanitize_windows_reserved_name("CON"), "CON_File");
+        assert_eq!(renamer::sanitize_windows_reserved_name("aux"), "aux_File");
+        assert_eq!(renamer::sanitize_windows_reserved_name("NUL"), "NUL_File");
+        assert_eq!(renamer::sanitize_windows_reserved_name("Relatorio"), "Relatorio");
+    }
+
+    #[test]
+    fn test_token_deduplication() {
+        let config = renamer::RenameConfig {
+            preset: "semantic".to_string(),
+            separator: "_".to_string(),
+            case_style: "title".to_string(),
+            date_format: "none".to_string(),
+            include_category: true,
+            remove_noise: true,
+            custom_template: None,
+            structure_order: Some(vec!["subject".to_string(), "clean_name".to_string()]),
+        };
+
+        // Arquivo cujo nome original repete o assunto da categoria
+        let proposed = renamer::generate_proposed_name(
+            "Fatura_Fatura_Enel.pdf",
+            "Boletos e Faturas/Enel",
+            None,
+            None,
+            &config,
+        );
+
+        // Não deve gerar "Fatura_Fatura_Enel" duplicado
+        assert_eq!(proposed, "Enel_Fatura.pdf");
+    }
+
+    #[test]
+    fn test_extract_exif_date_on_nonexistent() {
+        let fake_path = Path::new("C:/fake/path/img.jpg");
+        let date = content_extract::extract_exif_date(fake_path);
+        assert_eq!(date, None);
     }
 }

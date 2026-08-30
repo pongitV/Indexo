@@ -74,6 +74,8 @@ pub fn extract_text_snippet(path: &Path, max_chars: usize) -> Result<String> {
     let result = match ext.as_str() {
         "pdf" => extract_pdf(path, max_chars),
         "docx" => extract_docx(path, max_chars),
+        "pptx" => extract_pptx(path, max_chars),
+        "epub" => extract_epub(path, max_chars),
         "xlsx" | "xls" | "ods" => extract_spreadsheet(path, max_chars),
         "txt" | "md" | "csv" | "tsv" | "json" | "xml" | "html" | "htm" | "log" | "rs" | "ts"
         | "js" | "py" | "c" | "cpp" | "h" | "java" | "sql" | "yaml" | "yml" | "toml" | "ini"
@@ -99,6 +101,125 @@ pub fn extract_text_snippet(path: &Path, max_chars: usize) -> Result<String> {
         }
         Err(err) => Err(anyhow!("Falha ao extrair texto de {:?}: {}", path, err)),
     }
+}
+
+/// Extrai a data EXIF original (DateTimeOriginal ou DateTime) de uma imagem (JPEG/TIFF/PNG/RAW)
+pub fn extract_exif_date(path: &Path) -> Option<String> {
+    if !path.exists() || !path.is_file() {
+        return None;
+    }
+    let mut file = File::open(path).ok()?;
+    let mut buffer = [0u8; 65536]; // Lê os primeiros 64KB (onde fica o cabeçalho EXIF/APP1)
+    let bytes_read = file.read(&mut buffer).ok()?;
+    if bytes_read < 32 {
+        return None;
+    }
+
+    let slice = &buffer[..bytes_read];
+
+    // Procura por padrão de data EXIF padrão: "YYYY:MM:DD HH:MM:SS"
+    for i in 0..slice.len().saturating_sub(19) {
+        if slice[i] == b'2'
+            && slice[i + 1] == b'0'
+            && slice[i + 2].is_ascii_digit()
+            && slice[i + 3].is_ascii_digit()
+            && (slice[i + 4] == b':' || slice[i + 4] == b'-')
+            && slice[i + 5].is_ascii_digit()
+            && slice[i + 6].is_ascii_digit()
+            && (slice[i + 7] == b':' || slice[i + 7] == b'-')
+            && slice[i + 8].is_ascii_digit()
+            && slice[i + 9].is_ascii_digit()
+            && (slice[i + 10] == b' ' || slice[i + 10] == b'T')
+            && slice[i + 11].is_ascii_digit()
+            && slice[i + 12].is_ascii_digit()
+            && slice[i + 13] == b':'
+            && slice[i + 14].is_ascii_digit()
+            && slice[i + 15].is_ascii_digit()
+        {
+            if let Ok(s) = std::str::from_utf8(&slice[i..i + 10]) {
+                let formatted = s.replace(':', "-");
+                let year_str = &formatted[0..4];
+                let month_str = &formatted[5..7];
+                let day_str = &formatted[8..10];
+
+                if let (Ok(m), Ok(d)) = (month_str.parse::<u32>(), day_str.parse::<u32>()) {
+                    if (1..=12).contains(&m) && (1..=31).contains(&d) {
+                        return Some(format!("{}-{}-{}", year_str, month_str, day_str));
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Extracao rapida de texto de PPTX (apresentações do PowerPoint)
+fn extract_pptx(path: &Path, max_chars: usize) -> Result<String> {
+    let file = File::open(path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    let mut output = String::new();
+
+    for i in 1..=30 {
+        let slide_name = format!("ppt/slides/slide{}.xml", i);
+        if let Ok(mut slide_file) = archive.by_name(&slide_name) {
+            let mut raw_xml = String::new();
+            if slide_file.read_to_string(&mut raw_xml).is_ok() {
+                let mut inside_tag = false;
+                for ch in raw_xml.chars() {
+                    if ch == '<' {
+                        inside_tag = true;
+                    } else if ch == '>' {
+                        inside_tag = false;
+                        output.push(' ');
+                    } else if !inside_tag {
+                        output.push(ch);
+                        if output.len() >= max_chars * 2 {
+                            break;
+                        }
+                    }
+                }
+            }
+        } else {
+            break;
+        }
+    }
+
+    Ok(output)
+}
+
+/// Extracao rapida de texto de EPUB (livros digitais)
+fn extract_epub(path: &Path, max_chars: usize) -> Result<String> {
+    let file = File::open(path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    let mut output = String::new();
+
+    for i in 0..archive.len() {
+        let file_name = archive.by_index(i)?.name().to_string();
+        if file_name.ends_with(".html") || file_name.ends_with(".xhtml") || file_name.ends_with(".htm") {
+            if let Ok(mut chapter) = archive.by_name(&file_name) {
+                let mut raw = String::new();
+                if chapter.read_to_string(&mut raw).is_ok() {
+                    let mut inside_tag = false;
+                    for ch in raw.chars() {
+                        if ch == '<' {
+                            inside_tag = true;
+                        } else if ch == '>' {
+                            inside_tag = false;
+                            output.push(' ');
+                        } else if !inside_tag {
+                            output.push(ch);
+                            if output.len() >= max_chars * 2 {
+                                return Ok(output);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(output)
 }
 
 /// Extracao segura de texto de PDF

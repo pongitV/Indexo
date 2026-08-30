@@ -27,7 +27,9 @@ impl Database {
         let conn = Connection::open(db_path)?;
         conn.execute_batch(
             "PRAGMA foreign_keys = ON;
-             PRAGMA journal_mode = WAL;",
+             PRAGMA journal_mode = WAL;
+             PRAGMA synchronous = NORMAL;
+             PRAGMA mmap_size = 268435456;",
         )?;
         conn.execute_batch(include_str!("schema.sql"))?;
         Ok(Self { conn })
@@ -38,7 +40,9 @@ impl Database {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch(
             "PRAGMA foreign_keys = ON;
-             PRAGMA journal_mode = WAL;",
+             PRAGMA journal_mode = WAL;
+             PRAGMA synchronous = NORMAL;
+             PRAGMA mmap_size = 268435456;",
         )?;
         conn.execute_batch(include_str!("schema.sql"))?;
         Ok(Self { conn })

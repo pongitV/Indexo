@@ -175,7 +175,7 @@ pub fn clean_filename_noise(filename_without_ext: &str) -> String {
 
 /// Sanitiza strings para serem seguras como nomes de arquivo no Windows
 pub fn sanitize_filename_part(part: &str) -> String {
-    part.chars()
+    let sanitized: String = part.chars()
         .map(|c| match c {
             '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
             c if c.is_control() => '_',
@@ -183,7 +183,25 @@ pub fn sanitize_filename_part(part: &str) -> String {
         })
         .collect::<String>()
         .trim_matches(|c| c == ' ' || c == '.' || c == '_' || c == '-')
-        .to_string()
+        .to_string();
+
+    sanitize_windows_reserved_name(&sanitized)
+}
+
+/// Impede nomes reservados pelo sistema Windows (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+pub fn sanitize_windows_reserved_name(name: &str) -> String {
+    let upper = name.to_uppercase();
+    let reserved = [
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+
+    if reserved.contains(&upper.as_str()) {
+        format!("{}_File", name)
+    } else {
+        name.to_string()
+    }
 }
 
 /// Aplica o estilo de capitalização (Title, lower, upper, camel, snake, kebab)
@@ -548,12 +566,34 @@ pub fn generate_proposed_name(
         })
         .collect();
 
-    let joined = cased_parts.join(sep);
+    // Deduplicação a nível de palavras e tokens (ex: "Fatura_Fatura" -> "Fatura", "Enel_Fatura_Fatura" -> "Enel_Fatura")
+    let mut unique_words: Vec<String> = Vec::new();
+    for part in &cased_parts {
+        let sub_words: Vec<&str> = part
+            .split(|c: char| c.to_string() == *sep || c.is_whitespace() || (sep != "_" && c == '_'))
+            .filter(|w| !w.is_empty())
+            .collect();
+
+        for sw in sub_words {
+            let sw_lower = sw.to_lowercase();
+            if !unique_words.iter().any(|existing| existing.to_lowercase() == sw_lower) {
+                unique_words.push(sw.to_string());
+            }
+        }
+    }
+
+    let joined = if unique_words.is_empty() {
+        "Arquivo".to_string()
+    } else {
+        unique_words.join(sep)
+    };
+
+    let safe_stem = sanitize_windows_reserved_name(joined.trim_matches(|c| c == ' ' || c == '.' || c == '_'));
 
     if ext.is_empty() {
-        joined
+        safe_stem
     } else {
-        format!("{}.{}", joined, ext)
+        format!("{}.{}", safe_stem, ext.trim_start_matches('.'))
     }
 }
 

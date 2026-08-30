@@ -66,19 +66,7 @@ pub async fn classify_scanned_files(
     );
 
     // =========================================================================
-    // ETAPA 0: Detecção de Pastas Já Organizadas / Estruturadas
-    // =========================================================================
-    let mut already_organized_map: HashMap<usize, String> = HashMap::new();
-    for (idx, f) in files.iter().enumerate() {
-        if !root_path.is_empty() {
-            if let Some(rel_folder) = crate::engine::heuristics::detect_already_organized_folder(&f.original_path, &root_path) {
-                already_organized_map.insert(idx, rel_folder);
-            }
-        }
-    }
-
-    // =========================================================================
-    // CAMADA 1: Heurísticas instantâneas em paralelo (Rayon)
+    // ETAPA 0: Detecção de Pastas Já Organizadas e Avaliação de Coerência
     // =========================================================================
     let file_metas: Vec<FileMeta> = files
         .iter()
@@ -92,6 +80,30 @@ pub async fn classify_scanned_files(
             modified_at: f.modified_at.clone().unwrap_or_default(),
         })
         .collect();
+
+    let mut already_organized_map: HashMap<usize, String> = HashMap::new();
+    let mut folder_to_indices: HashMap<String, Vec<usize>> = HashMap::new();
+
+    for (idx, f) in files.iter().enumerate() {
+        if !root_path.is_empty() {
+            if let Some(rel_folder) = crate::engine::heuristics::detect_already_organized_folder(&f.original_path, &root_path) {
+                folder_to_indices.entry(rel_folder).or_default().push(idx);
+            }
+        }
+    }
+
+    // Para cada subpasta candidata, verifica a coerência semântica
+    for (rel_folder, indices) in folder_to_indices {
+        let folder_files: Vec<&FileMeta> = indices.iter().map(|&i| &file_metas[i]).collect();
+        let coherence = crate::engine::heuristics::calculate_folder_coherence(&folder_files, &rules);
+
+        // Se a pasta possui coerência suficiente (>= 0.60) ou tem estrutura multinível clara, preserva
+        if coherence >= 0.60 || rel_folder.contains('/') {
+            for idx in indices {
+                already_organized_map.insert(idx, rel_folder.clone());
+            }
+        }
+    }
 
     let heuristic_results: Vec<(usize, crate::engine::heuristics::HeuristicResult)> = file_metas
         .par_iter()

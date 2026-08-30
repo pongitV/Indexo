@@ -64,12 +64,16 @@ fn extract_text_windows_native(path: &Path) -> Result<String> {
         Storage::Streams::*,
     };
 
-    let bytes = std::fs::read(path)?;
-    if bytes.is_empty() {
+    // Lê os bytes do arquivo de imagem
+    let raw_bytes = std::fs::read(path)?;
+    if raw_bytes.is_empty() {
         return Ok(String::new());
     }
 
-    // Cria o stream de memória WinRT em memória
+    // Otimização: se a imagem for muito grande (> 2MP / 1920px), redimensiona em memória para acelerar OCR e economizar RAM
+    let bytes = optimize_image_for_ocr(&raw_bytes).unwrap_or(raw_bytes);
+
+    // Cria o stream WinRT em memória
     let stream = InMemoryRandomAccessStream::new()?;
     let writer = DataWriter::CreateDataWriter(&stream)?;
     writer.WriteBytes(&bytes)?;
@@ -97,6 +101,26 @@ fn extract_text_windows_native(path: &Path) -> Result<String> {
     let text = text_hstring.to_string();
 
     Ok(text)
+}
+
+/// Redimensiona imagens muito grandes para no máximo 1920x1920 para acelerar o OCR sem perda de caracteres
+fn optimize_image_for_ocr(raw_bytes: &[u8]) -> Option<Vec<u8>> {
+    use image::GenericImageView;
+    if raw_bytes.len() < 500 * 1024 {
+        return None; // Imagens pequenas (< 500KB) não precisam de resize
+    }
+
+    if let Ok(img) = image::load_from_memory(raw_bytes) {
+        let (w, h) = img.dimensions();
+        if w > 1920 || h > 1920 {
+            let resized = img.resize(1920, 1920, image::imageops::FilterType::Triangle);
+            let mut out = std::io::Cursor::new(Vec::new());
+            if resized.write_to(&mut out, image::ImageFormat::Jpeg).is_ok() {
+                return Some(out.into_inner());
+            }
+        }
+    }
+    None
 }
 
 /// Sanitiza e normaliza o texto extraído pelo OCR

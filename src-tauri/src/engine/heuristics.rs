@@ -410,7 +410,8 @@ fn get_parent_directory_hint(file_path: &str) -> Option<String> {
     }
 }
 
-/// Detecta se um arquivo já está situado em uma subpasta organizada/estruturada em relação à raiz escaneada
+/// Detecta se um arquivo já está situado em uma subpasta organizada/estruturada em relação à raiz escaneada.
+/// Retorna Some(relative_folder_path) se a subpasta possui coerência estrutural e semântica real.
 pub fn detect_already_organized_folder(file_path: &str, root_path: &str) -> Option<String> {
     let p_file = Path::new(file_path);
     let p_root = Path::new(root_path);
@@ -437,23 +438,75 @@ pub fn detect_already_organized_folder(file_path: &str, root_path: &str) -> Opti
         return None;
     }
 
-    // Pastas de descarte / lixo que NÃO devem ser consideradas organizadas
+    // Pastas de descarte, lixeira ou nomes provisórios que NUNCA devem ser consideradas organizadas
     let generic_dump_folders = [
-        "downloads", "desktop", "temp", "tmp", "files", "arquivos", "misc",
-        "nova pasta", "nova_pasta", "new folder", "new_folder", "outros",
-        "unorganized", "variados", "pasta", "folder",
+        "downloads", "download", "desktop", "temp", "tmp", "files", "arquivos", "misc",
+        "nova pasta", "nova_pasta", "novapasta", "new folder", "new_folder", "newfolder",
+        "outros", "unorganized", "variados", "pasta", "folder", "bagunca", "bagunça",
+        "lixeira", "lixo", "descarte", "despejo", "organizar", "para organizar", "para_organizar",
+        "to_sort", "unsorted", "loose", "scratch", "test", "teste", "todos", "all",
     ];
 
-    let first_lower = segments[0].to_lowercase();
-    if generic_dump_folders.contains(&first_lower.as_str()) {
-        return None;
-    }
+    // Verifica cada segmento da árvore de diretórios
+    for seg in &segments {
+        let seg_lower = seg.to_lowercase();
+        
+        // Verifica se é pasta de lixo/descarte conhecida
+        if generic_dump_folders.contains(&seg_lower.as_str()) {
+            return None;
+        }
 
-    if first_lower.len() < 2 {
-        return None;
+        // Padrões como "Nova Pasta (1)", "New Folder 2", "Pasta 3"
+        if (seg_lower.starts_with("nova pasta") || seg_lower.starts_with("new folder") || seg_lower.starts_with("pasta "))
+            && seg_lower.len() < 20
+        {
+            return None;
+        }
+
+        // Se for um único caractere sem significado (exceto letras de drive)
+        if seg_lower.len() < 2 {
+            return None;
+        }
+
+        // Se for um hash hexadecimal de pasta temporária (ex: 32 chars)
+        if (seg_lower.len() == 32 || seg_lower.len() == 36) && seg_lower.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+            return None;
+        }
     }
 
     Some(segments.join("/"))
+}
+
+/// Avalia o score de coerência semântica e tipológica de um grupo de arquivos em uma pasta (0.0 a 1.0)
+pub fn calculate_folder_coherence(files: &[&FileMeta], known_rules: &[ClassificationRule]) -> f32 {
+    if files.is_empty() {
+        return 0.0;
+    }
+    if files.len() == 1 {
+        return 0.80; // Arquivo único já em pasta estruturada
+    }
+
+    let mut category_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut total_classified = 0;
+
+    for f in files {
+        let res = classify_by_heuristics(f, known_rules);
+        if let Some(cat) = res.category_guess {
+            *category_counts.entry(cat).or_insert(0) += 1;
+            total_classified += 1;
+        }
+    }
+
+    if total_classified == 0 {
+        return 0.50;
+    }
+
+    // Calcula a proporção da categoria majoritária
+    let max_count = category_counts.values().copied().max().unwrap_or(0);
+    let majority_ratio = max_count as f32 / files.len() as f32;
+
+    // Se 70%+ dos arquivos são da mesma categoria, alta coerência
+    majority_ratio.clamp(0.0, 1.0)
 }
 
 fn contains_any(text: &str, keywords: &[&str]) -> bool {
