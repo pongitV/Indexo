@@ -10,6 +10,7 @@
     type SessionCategoryInfo,
     type SessionRenameInfo,
   } from "../lib/api";
+  import FileTreeNode, { type TreeNodeData } from "../lib/FileTreeNode.svelte";
   import { currentView, showToast } from "../lib/stores";
 
   let sessions: OrganizationSessionSummary[] = [];
@@ -21,6 +22,9 @@
   type TabType = "tree" | "categories" | "tags" | "moves" | "renames";
   let sessionTabs: Record<string, TabType> = {};
   let sessionExpanded: Record<string, boolean> = {};
+
+  // Track expanded folder nodes inside each session's side-by-side trees
+  let sessionExpandedTrees: Record<string, Set<string>> = {};
 
   // Filter for renames tab in each session: 'all' | 'applied' | 'preview'
   let renameFilters: Record<string, "all" | "applied" | "preview"> = {};
@@ -36,13 +40,13 @@
     isLoading = true;
     try {
       sessions = await getOrganizationHistory();
-      // Inicializar abas default para cada sessão
+      // Inicializar abas default para cada sessão (todas fechadas por padrão)
       for (const s of sessions) {
         if (!sessionTabs[s.session_id]) {
           sessionTabs[s.session_id] = s.files_moved_count > 0 ? "moves" : "tree";
         }
         if (sessionExpanded[s.session_id] === undefined) {
-          sessionExpanded[s.session_id] = true;
+          sessionExpanded[s.session_id] = false; // Iniciar FECHADO conforme solicitado
         }
         if (!renameFilters[s.session_id]) {
           renameFilters[s.session_id] = "all";
@@ -64,6 +68,13 @@
 
   function toggleExpand(sessionId: string) {
     sessionExpanded[sessionId] = !sessionExpanded[sessionId];
+    sessionExpanded = { ...sessionExpanded };
+  }
+
+  function toggleAllSessions(expand: boolean) {
+    for (const s of sessions) {
+      sessionExpanded[s.session_id] = expand;
+    }
     sessionExpanded = { ...sessionExpanded };
   }
 
@@ -120,17 +131,202 @@
     }
   }
 
-  // Agrupa os arquivos da sessão em árvore por categoria
-  function buildTreeStructure(files: SessionFileInfo[]): Record<string, SessionFileInfo[]> {
-    const tree: Record<string, SessionFileInfo[]> = {};
-    for (const f of files) {
-      const cat = f.category_name || "Outros Arquivos";
-      if (!tree[cat]) {
-        tree[cat] = [];
-      }
-      tree[cat].push(f);
+  function getSessionTreeExpanded(sessionId: string, rootPath: string): Set<string> {
+    if (!sessionExpandedTrees[sessionId]) {
+      sessionExpandedTrees[sessionId] = new Set([
+        `hist-before-root-${rootPath}`,
+        `hist-after-root-${rootPath}`,
+      ]);
     }
-    return tree;
+    return sessionExpandedTrees[sessionId];
+  }
+
+  function toggleSessionTreeFolder(sessionId: string, nodeId: string) {
+    const set = sessionExpandedTrees[sessionId] || new Set();
+    if (set.has(nodeId)) {
+      set.delete(nodeId);
+    } else {
+      set.add(nodeId);
+    }
+    sessionExpandedTrees[sessionId] = new Set(set);
+    sessionExpandedTrees = { ...sessionExpandedTrees };
+  }
+
+  function expandAllSessionTree(sessionId: string, nodes: TreeNodeData[]) {
+    const set = sessionExpandedTrees[sessionId] || new Set();
+    function collect(list: TreeNodeData[]) {
+      for (const n of list) {
+        if (n.isFolder) {
+          set.add(n.id);
+          if (n.children) collect(n.children);
+        }
+      }
+    }
+    collect(nodes);
+    sessionExpandedTrees[sessionId] = new Set(set);
+    sessionExpandedTrees = { ...sessionExpandedTrees };
+  }
+
+  function collapseAllSessionTree(sessionId: string, rootId: string) {
+    sessionExpandedTrees[sessionId] = new Set([rootId]);
+    sessionExpandedTrees = { ...sessionExpandedTrees };
+  }
+
+  // Constrói Árvore "Antes" (Estrutura Original)
+  function buildSessionBeforeTree(files: SessionFileInfo[], rootPath: string): TreeNodeData[] {
+    const normalizedRoot = rootPath.replace(/\\/g, "/").replace(/\/+$/, "");
+    const rootName = normalizedRoot ? normalizedRoot.split("/").pop() || "Pasta Raiz" : "Pasta Raiz";
+
+    const rootNode: TreeNodeData = {
+      id: `hist-before-root-${rootPath}`,
+      name: rootName,
+      isFolder: true,
+      fullPath: rootPath,
+      children: [],
+      fileCount: 0,
+    };
+
+    const folderMap = new Map<string, TreeNodeData>();
+    folderMap.set("", rootNode);
+
+    for (const file of files) {
+      const normalizedFilePath = file.original_path.replace(/\\/g, "/");
+      let relPath = "";
+      if (normalizedFilePath.startsWith(normalizedRoot)) {
+        relPath = normalizedFilePath.substring(normalizedRoot.length).replace(/^\/+/, "");
+      } else {
+        relPath = file.filename;
+      }
+
+      const parts = relPath.split("/");
+      parts.pop();
+
+      let currentRel = "";
+      let parentNode = rootNode;
+
+      for (const segment of parts) {
+        currentRel = currentRel ? `${currentRel}/${segment}` : segment;
+        if (!folderMap.has(currentRel)) {
+          const newFolder: TreeNodeData = {
+            id: `hist-before-dir-${rootPath}-${currentRel}`,
+            name: segment,
+            isFolder: true,
+            fullPath: `${normalizedRoot}/${currentRel}`,
+            isPreservedFolder: file.is_already_organized,
+            children: [],
+            fileCount: 0,
+          };
+          parentNode.children = parentNode.children || [];
+          parentNode.children.push(newFolder);
+          folderMap.set(currentRel, newFolder);
+        }
+        parentNode = folderMap.get(currentRel)!;
+      }
+
+      const fileNode: TreeNodeData = {
+        id: `hist-before-file-${file.file_id}`,
+        name: file.filename,
+        isFolder: false,
+        fullPath: file.original_path,
+        fileCount: 1,
+        categoryName: file.category_name,
+        categoryColor: file.category_color || undefined,
+        isPreservedFile: file.is_already_organized,
+      };
+
+      parentNode.children = parentNode.children || [];
+      parentNode.children.push(fileNode);
+    }
+
+    function calculateCounts(node: TreeNodeData): number {
+      if (!node.isFolder) return 1;
+      let sum = 0;
+      if (node.children) {
+        for (const c of node.children) {
+          sum += calculateCounts(c);
+        }
+      }
+      node.fileCount = sum;
+      return sum;
+    }
+    calculateCounts(rootNode);
+
+    return [rootNode];
+  }
+
+  // Constrói Árvore "Depois" (Estrutura Proposta com Categorias/Subpastas)
+  function buildSessionAfterTree(files: SessionFileInfo[], rootPath: string): TreeNodeData[] {
+    const normalizedRoot = rootPath.replace(/\\/g, "/").replace(/\/+$/, "");
+    const rootName = normalizedRoot ? normalizedRoot.split("/").pop() || "Pasta Raiz" : "Pasta Raiz";
+
+    const rootNode: TreeNodeData = {
+      id: `hist-after-root-${rootPath}`,
+      name: rootName,
+      isFolder: true,
+      fullPath: rootPath,
+      children: [],
+      fileCount: 0,
+    };
+
+    const folderMap = new Map<string, TreeNodeData>();
+    folderMap.set("", rootNode);
+
+    for (const file of files) {
+      const catPath = file.category_name || "Outros Arquivos";
+      const parts = catPath.replace(/\\/g, "/").split("/").map((s) => s.trim()).filter(Boolean);
+
+      let currentRel = "";
+      let parentNode = rootNode;
+
+      for (const segment of parts) {
+        currentRel = currentRel ? `${currentRel}/${segment}` : segment;
+        if (!folderMap.has(currentRel)) {
+          const newFolder: TreeNodeData = {
+            id: `hist-after-dir-${rootPath}-${currentRel}`,
+            name: segment,
+            isFolder: true,
+            fullPath: `${normalizedRoot}/${currentRel}`,
+            isPreservedFolder: file.is_already_organized,
+            categoryColor: file.category_color || undefined,
+            children: [],
+            fileCount: 0,
+          };
+          parentNode.children = parentNode.children || [];
+          parentNode.children.push(newFolder);
+          folderMap.set(currentRel, newFolder);
+        }
+        parentNode = folderMap.get(currentRel)!;
+      }
+
+      const fileNode: TreeNodeData = {
+        id: `hist-after-file-${file.file_id}`,
+        name: file.proposed_name || file.filename,
+        isFolder: false,
+        fullPath: file.original_path,
+        fileCount: 1,
+        categoryName: file.category_name,
+        categoryColor: file.category_color || undefined,
+        isPreservedFile: file.is_already_organized,
+      };
+
+      parentNode.children = parentNode.children || [];
+      parentNode.children.push(fileNode);
+    }
+
+    function calculateCounts(node: TreeNodeData): number {
+      if (!node.isFolder) return 1;
+      let sum = 0;
+      if (node.children) {
+        for (const c of node.children) {
+          sum += calculateCounts(c);
+        }
+      }
+      node.fileCount = sum;
+      return sum;
+    }
+    calculateCounts(rootNode);
+
+    return [rootNode];
   }
 
   function getFilteredRenames(renames: SessionRenameInfo[], filter: string = "all"): SessionRenameInfo[] {
@@ -138,6 +334,8 @@
     if (filter === "preview") return renames.filter((r) => !r.applied);
     return renames;
   }
+
+  $: anySessionOpen = Object.values(sessionExpanded).some(Boolean);
 
   $: filteredSessions = sessions.filter((s) => {
     if (!searchQuery.trim()) return true;
@@ -161,11 +359,27 @@
         <span class="history-count-badge">{sessions.length}</span>
       </div>
       <p class="subtitle">
-        Auditoria completa de sessões: visualize árvores sugeridas, categorias, tags, arquivos movidos e histórico de renomeações.
+        Auditoria completa de sessões: visualize árvores navegáveis lado a lado, categorias, tags, arquivos movidos e histórico de renomeações.
       </p>
     </div>
 
     <div class="header-controls">
+      <!-- Botão Global de Expandir/Recolher Sessões -->
+      <button
+        class="toggle-all-sessions-btn"
+        title={anySessionOpen ? "Recolher todas as sessões" : "Expandir todas as sessões"}
+        on:click={() => toggleAllSessions(!anySessionOpen)}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          {#if anySessionOpen}
+            <polyline points="18 15 12 9 6 15"></polyline>
+          {:else}
+            <polyline points="6 9 12 15 18 9"></polyline>
+          {/if}
+        </svg>
+        <span>{anySessionOpen ? "Recolher Sessões" : "Expandir Sessões"}</span>
+      </button>
+
       <div class="search-input-wrapper">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"></circle>
@@ -224,15 +438,20 @@
     {:else}
       <div class="sessions-list">
         {#each filteredSessions as session (session.session_id)}
-          {@const isExpanded = sessionExpanded[session.session_id] ?? true}
+          {@const isExpanded = sessionExpanded[session.session_id] ?? false}
           {@const currentTab = sessionTabs[session.session_id] || (session.files_moved_count > 0 ? "moves" : "tree")}
           {@const isAllUndone = session.files_moved_count > 0 && session.undone_count === session.files_moved_count}
           {@const isPartialUndone = session.undone_count > 0 && session.undone_count < session.files_moved_count}
-          {@const tree = buildTreeStructure(session.files)}
 
           <div class="session-card" class:is-undone={isAllUndone}>
             <!-- Top Card Bar -->
-            <div class="session-card-header">
+            <div
+              class="session-card-header"
+              role="button"
+              tabindex="0"
+              on:click={() => toggleExpand(session.session_id)}
+              on:keydown={(e) => (e.key === "Enter" || e.key === " ") && toggleExpand(session.session_id)}
+            >
               <div class="session-main-info">
                 <div class="folder-title-row">
                   <span class="folder-icon">📁</span>
@@ -240,7 +459,7 @@
                   <button
                     class="icon-action-btn"
                     title="Abrir no Explorador de Arquivos"
-                    on:click={() => handleOpenExplorer(session.root_path)}
+                    on:click|stopPropagation={() => handleOpenExplorer(session.root_path)}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -266,7 +485,12 @@
               </div>
 
               <!-- Status & Actions -->
-              <div class="session-header-actions">
+              <div
+                class="session-header-actions"
+                role="presentation"
+                on:click|stopPropagation
+                on:keydown|stopPropagation
+              >
                 <div class="status-badge-container">
                   {#if isAllUndone}
                     <span class="status-badge undone">
@@ -333,8 +557,8 @@
                 on:click={() => setTab(session.session_id, "tree")}
               >
                 <span>🌳</span>
-                <span>Árvore Sugerida</span>
-                <span class="tab-badge">{Object.keys(tree).length}</span>
+                <span>Árvore Navegável</span>
+                <span class="tab-badge">{session.files.length}</span>
               </button>
 
               <button
@@ -383,36 +607,99 @@
             <!-- Expandable Body Content according to selected tab -->
             {#if isExpanded}
               <div class="session-tab-body">
-                <!-- 1. TAB: ÁRVORE PROPOSTA -->
+                <!-- 1. TAB: ÁRVORE PROPOSTA NAVEGÁVEL LADO A LADO -->
                 {#if currentTab === "tree"}
-                  <div class="tree-tab-content">
-                    <div class="tab-info-header">
-                      <span>Estrutura de pastas e arquivos sugerida pela análise semântica:</span>
+                  {@const beforeTree = buildSessionBeforeTree(session.files, session.root_path)}
+                  {@const afterTree = buildSessionAfterTree(session.files, session.root_path)}
+                  {@const treeExpandedIds = getSessionTreeExpanded(session.session_id, session.root_path)}
+
+                  <div class="dual-tree-tab-content">
+                    <div class="dual-tree-header-row">
+                      <span class="tab-info-text">
+                        Navegue lado a lado pela estrutura de pastas original e pela estrutura sugerida pelo Indexo:
+                      </span>
+
+                      <div class="dual-tree-controls">
+                        <button
+                          class="tree-action-btn"
+                          title="Expandir todas as pastas de ambas as colunas"
+                          on:click={() => {
+                            expandAllSessionTree(session.session_id, [...beforeTree, ...afterTree]);
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="7 13 12 18 17 13"></polyline>
+                            <polyline points="7 6 12 11 17 6"></polyline>
+                          </svg>
+                          Expandir Pastas
+                        </button>
+                        <button
+                          class="tree-action-btn"
+                          title="Recolher todas as pastas"
+                          on:click={() => {
+                            sessionExpandedTrees[session.session_id] = new Set([
+                              `hist-before-root-${session.root_path}`,
+                              `hist-after-root-${session.root_path}`,
+                            ]);
+                            sessionExpandedTrees = { ...sessionExpandedTrees };
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="17 11 12 6 7 11"></polyline>
+                            <polyline points="17 18 12 13 7 18"></polyline>
+                          </svg>
+                          Recolher Pastas
+                        </button>
+                      </div>
                     </div>
 
-                    <div class="tree-folder-list">
-                      {#each Object.entries(tree) as [catName, files]}
-                        <div class="tree-category-block">
-                          <div class="tree-cat-header">
-                            <span class="tree-folder-icon">📂</span>
-                            <span class="tree-cat-name">{catName}</span>
-                            <span class="tree-files-count">{files.length} {files.length === 1 ? "arquivo" : "arquivos"}</span>
+                    <!-- Colunas Lado a Lado -->
+                    <div class="dual-tree-container">
+                      <!-- Coluna Esquerda: Estrutura Atual / Original -->
+                      <div class="tree-column-panel">
+                        <div class="tree-column-header">
+                          <div class="tree-col-title">
+                            <span class="tree-col-icon">📂</span>
+                            <span>Estrutura Original</span>
                           </div>
-
-                          <div class="tree-files-list">
-                            {#each files as file}
-                              <div class="tree-file-row">
-                                <span class="tree-file-icon">📄</span>
-                                <span class="tree-file-name" title={file.filename}>{file.filename}</span>
-                                <span class="tree-file-size">{formatBytes(file.size_bytes)}</span>
-                                {#if file.is_already_organized}
-                                  <span class="organized-tag">Preservado</span>
-                                {/if}
-                              </div>
-                            {/each}
-                          </div>
+                          <span class="tree-col-meta">{session.files.length} arquivos</span>
                         </div>
-                      {/each}
+
+                        <div class="tree-column-scroll">
+                          {#each beforeTree as node (node.id)}
+                            <FileTreeNode
+                              {node}
+                              expandedIds={treeExpandedIds}
+                              onToggleFolder={(id) => toggleSessionTreeFolder(session.session_id, id)}
+                              onFileContextMenu={() => {}}
+                              onFolderContextMenu={() => {}}
+                            />
+                          {/each}
+                        </div>
+                      </div>
+
+                      <!-- Coluna Direita: Estrutura Proposta Organizada -->
+                      <div class="tree-column-panel proposed">
+                        <div class="tree-column-header">
+                          <div class="tree-col-title">
+                            <span class="tree-col-icon">✨</span>
+                            <span>Estrutura Proposta / Organizada</span>
+                          </div>
+                          <span class="tree-col-meta">{session.files.length} arquivos</span>
+                        </div>
+
+                        <div class="tree-column-scroll">
+                          {#each afterTree as node (node.id)}
+                            <FileTreeNode
+                              {node}
+                              expandedIds={treeExpandedIds}
+                              onToggleFolder={(id) => toggleSessionTreeFolder(session.session_id, id)}
+                              onFileContextMenu={() => {}}
+                              onFolderContextMenu={() => {}}
+                            />
+                          {/each}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -423,22 +710,28 @@
                       <span>Categorias identificadas ou criadas automaticamente para esta sessão:</span>
                     </div>
 
-                    <div class="categories-grid">
-                      {#each session.categories_assigned as cat}
-                        <div class="category-card-mini">
-                          <div class="cat-card-top">
-                            <span class="cat-dot" style="background: {cat.color || 'var(--accent-primary)'};"></span>
-                            <span class="cat-name">{cat.name}</span>
-                            <span class="cat-type-pill {cat.created_by}">
-                              {cat.created_by === "user" ? "Manual" : "Auto IA"}
-                            </span>
+                    {#if session.categories_assigned.length === 0}
+                      <div class="empty-tab-state">
+                        Nenhuma categoria extra criada (pastas e arquivos preservados em suas posições originais).
+                      </div>
+                    {:else}
+                      <div class="categories-grid">
+                        {#each session.categories_assigned as cat}
+                          <div class="category-card-mini">
+                            <div class="cat-card-top">
+                              <span class="cat-dot" style="background: {cat.color || 'var(--accent-primary)'};"></span>
+                              <span class="cat-name">{cat.name}</span>
+                              <span class="cat-type-pill {cat.created_by}">
+                                {cat.created_by === "user" ? "Manual" : "Auto IA"}
+                              </span>
+                            </div>
+                            <div class="cat-card-bottom">
+                              <span class="cat-file-count">📊 {cat.file_count} {cat.file_count === 1 ? "arquivo" : "arquivos"}</span>
+                            </div>
                           </div>
-                          <div class="cat-card-bottom">
-                            <span class="cat-file-count">📊 {cat.file_count} {cat.file_count === 1 ? "arquivo" : "arquivos"}</span>
-                          </div>
-                        </div>
-                      {/each}
-                    </div>
+                        {/each}
+                      </div>
+                    {/if}
                   </div>
 
                 <!-- 3. TAB: TAGS -->
@@ -448,15 +741,21 @@
                       <span>Tags semânticas associadas aos arquivos desta pasta:</span>
                     </div>
 
-                    <div class="tags-cloud-wrap">
-                      {#each session.categories_assigned as tag}
-                        <div class="tag-badge-pill" style="border-color: {tag.color || 'var(--border-medium)'};">
-                          <span class="tag-bullet" style="background: {tag.color || 'var(--accent-primary)'};"></span>
-                          <span class="tag-title">{tag.name}</span>
-                          <span class="tag-count-bubble">{tag.file_count}</span>
-                        </div>
-                      {/each}
-                    </div>
+                    {#if session.categories_assigned.length === 0}
+                      <div class="empty-tab-state">
+                        Nenhuma tag extra gerada para arquivos preservados.
+                      </div>
+                    {:else}
+                      <div class="tags-cloud-wrap">
+                        {#each session.categories_assigned as tag}
+                          <div class="tag-badge-pill" style="border-color: {tag.color || 'var(--border-medium)'};">
+                            <span class="tag-bullet" style="background: {tag.color || 'var(--accent-primary)'};"></span>
+                            <span class="tag-title">{tag.name}</span>
+                            <span class="tag-count-bubble">{tag.file_count}</span>
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
                   </div>
 
                 <!-- 4. TAB: ARQUIVOS MOVIDOS -->
@@ -681,6 +980,27 @@
     gap: 0.75rem;
   }
 
+  .toggle-all-sessions-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 120ms ease;
+  }
+
+  .toggle-all-sessions-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong, #475569);
+  }
+
   .search-input-wrapper {
     position: relative;
     display: flex;
@@ -701,7 +1021,7 @@
     padding: 0.5rem 2rem 0.5rem 2.25rem;
     font-size: 0.85rem;
     color: var(--text-primary);
-    width: 300px;
+    width: 280px;
     transition: all 150ms ease;
   }
 
@@ -836,6 +1156,8 @@
     gap: 1rem;
     flex-wrap: wrap;
     background: var(--bg-secondary);
+    cursor: pointer;
+    user-select: none;
   }
 
   .session-main-info {
@@ -1048,80 +1370,115 @@
     letter-spacing: 0.04em;
   }
 
-  /* 1. Tree View Styles */
-  .tree-folder-list {
+  /* 1. Dual Side-by-Side Tree View Styles */
+  .dual-tree-tab-content {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
   }
 
-  .tree-category-block {
+  .dual-tree-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .dual-tree-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .tree-action-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    padding: 0.25rem 0.55rem;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+    transition: all 120ms ease;
+  }
+
+  .tree-action-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong, #475569);
+  }
+
+  .dual-tree-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    min-height: 280px;
+    max-height: 480px;
+  }
+
+  @media (max-width: 820px) {
+    .dual-tree-container {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .tree-column-panel {
     background: var(--bg-secondary);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    overflow: hidden;
-  }
-
-  .tree-cat-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.55rem 0.85rem;
-    background: rgba(0, 0, 0, 0.06);
-    border-bottom: 1px solid var(--border-subtle);
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .tree-files-count {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    font-weight: normal;
-    margin-left: auto;
-  }
-
-  .tree-files-list {
     display: flex;
     flex-direction: column;
-    padding: 0.35rem 0.5rem;
-    gap: 0.25rem;
+    overflow: hidden;
   }
 
-  .tree-file-row {
+  .tree-column-panel.proposed {
+    border-color: rgba(59, 130, 246, 0.25);
+  }
+
+  .tree-column-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.3rem 0.6rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.8rem;
-    font-family: var(--font-mono);
-  }
-
-  .tree-file-row:hover {
-    background: var(--bg-hover);
-  }
-
-  .tree-file-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    justify-content: space-between;
+    padding: 0.55rem 0.85rem;
+    background: rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.82rem;
+    font-weight: 700;
     color: var(--text-primary);
   }
 
-  .tree-file-size {
-    font-size: 0.75rem;
-    color: var(--text-muted);
+  .tree-col-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
   }
 
-  .organized-tag {
-    background: rgba(16, 185, 129, 0.1);
-    color: #10b981;
-    font-size: 0.68rem;
-    font-weight: 700;
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-sm);
+  .tree-col-icon {
+    font-size: 0.95rem;
+  }
+
+  .tree-col-meta {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    font-weight: normal;
+  }
+
+  .tree-column-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+    scrollbar-width: thin;
+  }
+
+  .empty-tab-state {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: 2rem;
   }
 
   /* 2. Categories Grid Styles */

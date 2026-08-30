@@ -659,15 +659,17 @@ impl Database {
 
                 let is_already_org = crate::engine::heuristics::detect_already_organized_folder(&orig_path, &root_path).is_some();
 
-                // Agrupar categorias
-                let entry = cat_map.entry(cat_name.clone()).or_insert_with(|| models::SessionCategoryInfo {
-                    id: cat_id.clone(),
-                    name: cat_name.clone(),
-                    color: cat_color.clone(),
-                    created_by: created_by.clone(),
-                    file_count: 0,
-                });
-                entry.file_count += 1;
+                // Agrupar categorias apenas para arquivos genuinamente categorizados
+                if !is_already_org && !cat_id.is_empty() {
+                    let entry = cat_map.entry(cat_name.clone()).or_insert_with(|| models::SessionCategoryInfo {
+                        id: cat_id.clone(),
+                        name: cat_name.clone(),
+                        color: cat_color.clone(),
+                        created_by: created_by.clone(),
+                        file_count: 0,
+                    });
+                    entry.file_count += 1;
+                }
 
                 files.push(models::SessionFileInfo {
                     file_id: f_id,

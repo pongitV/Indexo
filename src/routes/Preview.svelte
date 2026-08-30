@@ -242,16 +242,21 @@
 
   let initializedSessionId: string | null = null;
 
-  // Expandir todas as pastas inicialmente na primeira carga
+  // Inicializa com as pastas recolhidas (apenas raízes abertas) conforme solicitado pelo usuário
   $: if ($currentSessionId !== initializedSessionId && beforeTree.length > 0 && afterTree.length > 0) {
     initializedSessionId = $currentSessionId;
-    const allBefore = new Set<string>();
-    collectFolderIds(beforeTree, allBefore);
-    expandedBeforeIds = allBefore;
+    expandedBeforeIds = new Set(["before-root"]);
+    expandedAfterIds = new Set(["after-root"]);
+  }
 
-    const allAfter = new Set<string>();
-    collectFolderIds(afterTree, allAfter);
-    expandedAfterIds = allAfter;
+  function toggleAllTrees(expand: boolean) {
+    if (expand) {
+      expandAllBefore();
+      expandAllAfter();
+    } else {
+      collapseAllBefore();
+      collapseAllAfter();
+    }
   }
 
   function collectFolderIds(nodes: TreeNodeData[], acc: Set<string>) {
@@ -867,6 +872,23 @@
     </label>
 
     <div class="action-buttons">
+      <button
+        class="secondary-btn"
+        title="Abrir ou fechar todas as pastas de ambas as árvores"
+        on:click={() => toggleAllTrees(expandedBeforeIds.size <= 2 && expandedAfterIds.size <= 2)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          {#if expandedBeforeIds.size <= 2 && expandedAfterIds.size <= 2}
+            <polyline points="7 13 12 18 17 13"></polyline>
+            <polyline points="7 6 12 11 17 6"></polyline>
+          {:else}
+            <polyline points="17 11 12 6 7 11"></polyline>
+            <polyline points="17 18 12 13 7 18"></polyline>
+          {/if}
+        </svg>
+        {expandedBeforeIds.size <= 2 && expandedAfterIds.size <= 2 ? "Expandir Todas as Pastas" : "Recolher Todas as Pastas"}
+      </button>
+
       <button
         class="secondary-btn"
         disabled={isUndoing || isApplying}

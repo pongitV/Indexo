@@ -278,34 +278,39 @@ pub async fn classify_scanned_files(
                 }
             });
 
-        // Se não for pré-organizado e tiver subcategoria refinada calculada
-        if !is_organized {
+        // Se for uma pasta/arquivo já organizado e preservado, NÃO criamos categorias nem tags no banco
+        let (suggested_cat_name, cat_id, cat_color) = if is_organized {
+            let display_name = orig_rel.clone().unwrap_or_else(|| "Preservado".to_string());
+            (display_name, "".to_string(), None)
+        } else {
+            // Se não for pré-organizado e tiver subcategoria refinada calculada
             if let Some(refined_cat) = subcategory_map.get(&f.id) {
                 cat_name = refined_cat.clone();
             }
-        }
 
-        let category = match category_cache.get(&cat_name) {
-            Some(c) => c.clone(),
-            None => {
-                let cat = db
-                    .get_or_create_category(&cat_name, "auto", None)
-                    .map_err(|e| e.to_string())?;
-                category_cache.insert(cat_name.clone(), cat.clone());
-                cat
-            }
+            let category = match category_cache.get(&cat_name) {
+                Some(c) => c.clone(),
+                None => {
+                    let cat = db
+                        .get_or_create_category(&cat_name, "auto", None)
+                        .map_err(|e| e.to_string())?;
+                    category_cache.insert(cat_name.clone(), cat.clone());
+                    cat
+                }
+            };
+
+            // Salva associação no SQLite apenas para arquivos genuinamente classificados
+            let _ = db.assign_file_category(&f.id, &category.id, confidence, "heuristic");
+            (category.name, category.id, category.color)
         };
-
-        // Salva associação no SQLite
-        let _ = db.assign_file_category(&f.id, &category.id, confidence, "heuristic");
 
         let classified = ClassifiedFile {
             file_id: f.id.clone(),
             path: f.original_path.clone(),
             filename: f.filename.clone(),
-            suggested_category: category.name.clone(),
-            category_id: category.id.clone(),
-            category_color: category.color.clone(),
+            suggested_category: suggested_cat_name,
+            category_id: cat_id,
+            category_color: cat_color,
             confidence,
             tier_used: tier,
             size_bytes: f.size_bytes.max(0) as u64,
