@@ -132,8 +132,9 @@ flowchart TD
 
 ## Tema Biblioteca de Alexandria & Flexoki
 
-O design do Indexo foi construído para criar uma atmosfera de biblioteca clássica, estudos e ordem:
+O design e a paleta de cores do Indexo foram inspirados no esquema de cores **[Flexoki](https://stephango.com/flexoki)** (criado por [Steph Ango](https://stephango.com/)), projetado especificamente para leitura confortável em prosa e código, combinado com a atmosfera de manuscritos e encadernações da clássica Biblioteca de Alexandria:
 
+* **Inspiração de Cores ([Flexoki](https://stephango.com/flexoki))**: Paleta de tintas com contraste térmico balanceado para minimizar a fadiga ocular em sessões de organização de arquivos.
 * **Modo Claro (*Alexandria Day*)**:
   - Fundo em **Bege de Página de Livro Antiga** (`#EFE5D3` / `#E4D8C2`).
   - Tipografia em **Tinta Sépia/Carvão Profunda** (`#211912`).

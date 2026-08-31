@@ -132,6 +132,9 @@ flowchart TD
 
 ## Library of Alexandria & Flexoki Theme
 
+The visual design and color palette of Indexo were inspired by the **[Flexoki](https://stephango.com/flexoki)** color scheme (created by [Steph Ango](https://stephango.com/)), engineered specifically for comfortable reading of prose and code, merged with the warm atmosphere of classical manuscripts and leather-bound books from the ancient Library of Alexandria:
+
+* **Color Inspiration ([Flexoki](https://stephango.com/flexoki))**: An inking palette with balanced thermal contrast designed to eliminate eye fatigue during long cataloging sessions.
 * **Day Mode (*Alexandria Day*)**:
   - Background: **Antique Book-Page Beige** (`#EFE5D3` / `#E4D8C2`).
   - Typography: **Deep Charcoal & Sepia Ink** (`#211912`).
