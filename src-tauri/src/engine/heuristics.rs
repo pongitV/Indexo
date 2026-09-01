@@ -203,143 +203,216 @@ fn analyze_filename_nlp(filename: &str, ext_declared: &str, ext_detected: &str) 
     let is_generic = is_generic_or_random_name(filename);
 
     // =========================================================================
-    // DOMÍNIO 1: Código, Scripts e Desenvolvimento (Extensões Protegidas)
-    // NUNCA podem ser classificados como Boletos, Faturas, Fotos ou Mídia
+    // DOMÍNIO 1: Modelos 3D e CAD
+    // =========================================================================
+    let model_3d_exts = ["blend", "stl", "step", "obj", "fbx", "dae", "3ds", "iges", "dwg", "dxf", "blend1", "skp", "ply"];
+    if model_3d_exts.contains(&effective_ext) {
+        return (Some("Projetos/Modelos-3D-CAD".to_string()), 0.92, is_generic);
+    }
+
+    // =========================================================================
+    // DOMÍNIO 2: Fontes e Tipografia
+    // =========================================================================
+    let font_exts = ["ttf", "otf", "woff", "woff2", "eot", "fon"];
+    if font_exts.contains(&effective_ext) {
+        return (Some("Fontes-Tipografia".to_string()), 0.94, is_generic);
+    }
+
+    // =========================================================================
+    // DOMÍNIO 3: Código, Scripts e Desenvolvimento (Extensões Protegidas)
     // =========================================================================
     if is_code_or_script_extension(effective_ext) {
-        return (Some("Código e Desenvolvimento".to_string()), 0.90, is_generic);
+        return (Some("Projetos/Scripts-Automacoes".to_string()), 0.90, is_generic);
     }
 
     // =========================================================================
-    // DOMÍNIO 2: Documentação Técnica e Markdown (.md, .rst, .tex)
-    // =========================================================================
-    let markdown_exts = ["md", "markdown", "rst", "adoc", "tex", "log"];
-    if markdown_exts.contains(&effective_ext) {
-        return (Some("Documentos e Documentação".to_string()), 0.85, is_generic);
-    }
-
-    // =========================================================================
-    // DOMÍNIO 3: Mídias Nativas (Extensões com Tipologia Inegociável)
+    // DOMÍNIO 4: Mídias Nativas (Media/...)
     // =========================================================================
     let image_exts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "tiff", "ico", "raw", "heic", "psd", "ai", "eps", "xcf", "cr2", "nef", "arw"];
     if image_exts.contains(&effective_ext) {
         let conf = if is_generic { 0.65 } else { 0.85 };
-        return (Some("Fotos e Imagens".to_string()), conf, is_generic);
+        return (Some("Media/Imagens-Fotografias".to_string()), conf, is_generic);
     }
 
     let video_exts = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "3gp", "ts", "mpg", "mpeg"];
     if video_exts.contains(&effective_ext) {
         let conf = if is_generic { 0.70 } else { 0.85 };
-        return (Some("Vídeos".to_string()), conf, is_generic);
+        return (Some("Media/Videos-Gravacoes".to_string()), conf, is_generic);
     }
 
     let audio_exts = ["mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "mid", "midi", "opus", "aiff", "alac"];
     if audio_exts.contains(&effective_ext) {
-        return (Some("Áudios e Músicas".to_string()), 0.85, is_generic);
+        return (Some("Media/Audios-Musicas".to_string()), 0.85, is_generic);
     }
 
-    let archive_exts = ["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "iso", "tgz", "cab", "lz", "zst"];
+    // =========================================================================
+    // DOMÍNIO 5: Compactados e Backups
+    // =========================================================================
+    let archive_exts = ["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "tgz", "cab", "lz", "zst", "bak"];
     if archive_exts.contains(&effective_ext) {
-        return (Some("Arquivos Compactados".to_string()), 0.88, is_generic);
+        return (Some("Compactados-Backups".to_string()), 0.88, is_generic);
     }
 
-    let installer_exts = ["exe", "msi", "dmg", "pkg", "appimage", "deb", "rpm", "apk", "jar", "dll", "so", "dylib", "sys"];
+    // =========================================================================
+    // DOMÍNIO 6: Executáveis, Jogos e Instaladores (Executaveis/...)
+    // =========================================================================
+    // Detecção especializada de ROMs e Emuladores por Plataforma / Console:
+    match effective_ext {
+        "nes" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Nintendo-NES".to_string()), 0.95, is_generic),
+        "sfc" | "smc" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Super-Nintendo-SNES".to_string()), 0.95, is_generic),
+        "gba" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Game-Boy-Advance-GBA".to_string()), 0.95, is_generic),
+        "gbc" | "gb" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Game-Boy-Color-GBC".to_string()), 0.95, is_generic),
+        "nds" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Nintendo-DS".to_string()), 0.95, is_generic),
+        "3ds" | "cia" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Nintendo-3DS".to_string()), 0.95, is_generic),
+        "n64" | "z64" | "v64" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Nintendo-64".to_string()), 0.95, is_generic),
+        "nsp" | "xci" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Nintendo-Switch".to_string()), 0.95, is_generic),
+        "rvz" | "wbfs" | "wad" | "gcz" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Nintendo-Wii-GameCube".to_string()), 0.95, is_generic),
+        "pbp" | "cso" => return (Some("Executaveis/Jogos-Emuladores-ROMs/PlayStation-PSP".to_string()), 0.95, is_generic),
+        "gen" | "smd" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Sega-MegaDrive".to_string()), 0.95, is_generic),
+        "cdi" | "gdi" => return (Some("Executaveis/Jogos-Emuladores-ROMs/Sega-Dreamcast".to_string()), 0.95, is_generic),
+        "chd" => {
+            if lower.contains("ps1") || lower.contains("psx") || lower.contains("playstation") {
+                return (Some("Executaveis/Jogos-Emuladores-ROMs/PlayStation-1".to_string()), 0.95, is_generic);
+            }
+            if lower.contains("ps2") || lower.contains("playstation2") {
+                return (Some("Executaveis/Jogos-Emuladores-ROMs/PlayStation-2".to_string()), 0.95, is_generic);
+            }
+            if lower.contains("saturn") {
+                return (Some("Executaveis/Jogos-Emuladores-ROMs/Sega-Saturn".to_string()), 0.95, is_generic);
+            }
+            if lower.contains("dreamcast") {
+                return (Some("Executaveis/Jogos-Emuladores-ROMs/Sega-Dreamcast".to_string()), 0.95, is_generic);
+            }
+            return (Some("Executaveis/Jogos-Emuladores-ROMs/Imagens-Discos-CHD".to_string()), 0.90, is_generic);
+        }
+        _ => {}
+    }
+
+    // ROMs em imagens de disco (.iso, .bin, .img) identificadas por console
+    if ["iso", "img", "bin", "cue", "mdf"].contains(&effective_ext) {
+        if lower.contains("ps1") || lower.contains("psx") || lower.contains("playstation 1") {
+            return (Some("Executaveis/Jogos-Emuladores-ROMs/PlayStation-1".to_string()), 0.94, is_generic);
+        }
+        if lower.contains("ps2") || lower.contains("playstation 2") || lower.contains("playstation2") {
+            return (Some("Executaveis/Jogos-Emuladores-ROMs/PlayStation-2".to_string()), 0.94, is_generic);
+        }
+        if lower.contains("ps3") || lower.contains("playstation 3") {
+            return (Some("Executaveis/Jogos-Emuladores-ROMs/PlayStation-3".to_string()), 0.94, is_generic);
+        }
+        if lower.contains("gamecube") || lower.contains("gcn") || lower.contains("wii") {
+            return (Some("Executaveis/Jogos-Emuladores-ROMs/Nintendo-Wii-GameCube".to_string()), 0.94, is_generic);
+        }
+        if lower.contains("dreamcast") {
+            return (Some("Executaveis/Jogos-Emuladores-ROMs/Sega-Dreamcast".to_string()), 0.94, is_generic);
+        }
+        if lower.contains("saturn") {
+            return (Some("Executaveis/Jogos-Emuladores-ROMs/Sega-Saturn".to_string()), 0.94, is_generic);
+        }
+    }
+
+    let disc_image_exts = ["iso", "img", "vhd", "vhdx", "bin", "cue"];
+    if disc_image_exts.contains(&effective_ext) {
+        return (Some("Executaveis/Instaladores-ISOs".to_string()), 0.90, is_generic);
+    }
+
+    let installer_exts = ["exe", "msi", "dmg", "pkg", "appimage", "deb", "rpm", "apk", "jar"];
     if installer_exts.contains(&effective_ext) {
-        return (Some("Instaladores e Programas".to_string()), 0.90, is_generic);
+        // Navegadores conhecidos
+        if lower.contains("chrome") || lower.contains("firefox") || lower.contains("brave") || lower.contains("edge") || lower.contains("opera") || lower.contains("vivaldi") {
+            return (Some("Executaveis/Aplicativos-Navegadores".to_string()), 0.94, is_generic);
+        }
+        // IDEs e Editores conhecidos
+        if lower.contains("vscode") || lower.contains("code_setup") || lower.contains("idea") || lower.contains("pycharm") || lower.contains("cursor") || lower.contains("sublime") || lower.contains("neovim") {
+            return (Some("Executaveis/Aplicativos-IDEs".to_string()), 0.94, is_generic);
+        }
+        // Design e Criação
+        if lower.contains("photoshop") || lower.contains("figma") || lower.contains("gimp") || lower.contains("obs") || lower.contains("davinci") || lower.contains("blender") {
+            return (Some("Executaveis/Aplicativos-Design-Edicao".to_string()), 0.94, is_generic);
+        }
+        // Drivers
+        if lower.contains("driver") || lower.contains("geforce") || lower.contains("amd_") || lower.contains("realtek") || lower.contains("chipset") {
+            return (Some("Executaveis/Instaladores-Drivers".to_string()), 0.92, is_generic);
+        }
+        return (Some("Executaveis/Instaladores-Setups".to_string()), 0.88, is_generic);
     }
 
+    // =========================================================================
+    // DOMÍNIO 7: Documentos por Conteúdo (Documentos/...)
+    // =========================================================================
     let ebook_exts = ["epub", "mobi", "azw3", "cbr", "cbz", "fb2"];
     if ebook_exts.contains(&effective_ext) {
-        return (Some("Livros e E-books".to_string()), 0.88, is_generic);
+        return (Some("Documentos/Estudos".to_string()), 0.90, is_generic);
     }
 
-    let sheet_exts = ["xlsx", "xls", "csv", "ods", "tsv", "xlsm", "numbers"];
-    if sheet_exts.contains(&effective_ext) {
-        let conf = if is_generic { 0.60 } else { 0.80 };
-        return (Some("Planilhas e Dados".to_string()), conf, is_generic);
-    }
-
-    // =========================================================================
-    // DOMÍNIO 4: Dicionários Semânticos por Palavras-Chave (Apenas Docs/PDFs)
-    // =========================================================================
-
-    // 1. Financeiro / Boletos / Faturas (Tokens Exatos e Expressões Compostas)
+    // 1. Financeiro / Boletos / Faturas / Impostos
     let finance_keywords = [
         "boleto", "fatura", "conta_de_luz", "conta_luz", "conta_de_agua", "conta_agua",
         "energia", "enel", "cemig", "copel", "cpfl", "sabesp", "sanepar", "embasa",
         "claro", "vivo", "tim", "oi_fibra", "internet", "iptu", "ipva", "darf", "das_mei",
         "tributo", "fatura_cartao", "fatura_nubank", "fatura_itau", "fatura_bradesco",
         "invoice", "electric_bill", "utility_bill", "phone_bill",
-    ];
-    if contains_word_token(&lower, &finance_keywords) {
-        return (Some("Boletos e Faturas".to_string()), 0.88, is_generic);
-    }
-
-    // 2. Comprovantes e Recibos
-    let receipt_keywords = [
+        "danfe", "nfe", "nf-e", "nfse", "nfs-e", "nota_fiscal", "notafiscal", "cupom_fiscal", "xml_nfe",
         "comprovante", "recibo", "pagamento", "transferencia", "pix", "ted", "doc_bancario",
         "extrato", "extrato_bancario", "holerite", "contracheque", "receipt", "payment_receipt",
-        "voucher", "statement", "bank_statement",
+        "voucher", "statement", "bank_statement", "irpf", "declaracao_ir",
     ];
-    if contains_word_token(&lower, &receipt_keywords) {
-        return (Some("Comprovantes e Recibos".to_string()), 0.86, is_generic);
+    if contains_word_token(&lower, &finance_keywords) {
+        return (Some("Documentos/Fiscais-Pessoais".to_string()), 0.90, is_generic);
     }
 
-    // 3. Notas Fiscais
-    let tax_doc_keywords = [
-        "danfe", "nfe", "nf-e", "nfse", "nfs-e", "nota_fiscal", "notafiscal", "cupom_fiscal", "xml_nfe",
-    ];
-    if contains_word_token(&lower, &tax_doc_keywords) {
-        return (Some("Notas Fiscais".to_string()), 0.90, is_generic);
-    }
-
-    // 4. Contratos e Documentos Legais
-    let legal_keywords = [
+    // 2. Contratos e Documentos Pessoais / Identidade
+    let legal_personal_keywords = [
         "contrato", "acordo", "termo_de_adesao", "termo_de_uso", "procuracao", "declaracao",
         "estatuto", "certidao", "aditivo", "notificacao", "juridico", "contract", "agreement",
         "nda", "affidavit", "power_of_attorney", "deed", "termo_de_rescisao",
-    ];
-    if contains_word_token(&lower, &legal_keywords) {
-        return (Some("Contratos e Jurídico".to_string()), 0.85, is_generic);
-    }
-
-    // 5. Documentos Pessoais e Identidade
-    let personal_doc_keywords = [
         "rg", "cpf", "cnh", "passaporte", "identidade", "carteira_de_trabalho", "titulo_eleitor",
         "certidao_nascimento", "certidao_casamento", "curriculo", "curriculum", "resume", "cv",
         "passport", "driver_license",
     ];
-    if contains_word_token(&lower, &personal_doc_keywords) {
-        return (Some("Documentos Pessoais".to_string()), 0.86, is_generic);
+    if contains_word_token(&lower, &legal_personal_keywords) {
+        return (Some("Documentos/Fiscais-Pessoais".to_string()), 0.88, is_generic);
     }
 
-    // 6. Relatorios e Projetos de Trabalho
-    let work_keywords = [
-        "relatorio", "apresentacao", "slides", "ata_de_reuniao", "projeto", "orcamento",
-        "proposta_comercial", "briefing", "cronograma", "planejamento", "report", "presentation",
-        "proposal", "budget", "project_plan", "meeting_minutes",
-    ];
-    if contains_word_token(&lower, &work_keywords) {
-        return (Some("Relatórios e Projetos".to_string()), 0.82, is_generic);
-    }
-
-    // 7. Estudos e Academico
+    // 3. Documentos de Estudos e Acadêmicos
     let study_keywords = [
         "tcc", "artigo_cientifico", "dissertacao", "tese", "monografia", "apostila",
         "resumo_aula", "prova", "gabarito", "exercicio", "syllabus", "thesis", "essay",
-        "academic_paper",
+        "academic_paper", "livro", "ebook", "aula", "curso", "disciplina", "estudo",
     ];
     if contains_word_token(&lower, &study_keywords) {
-        return (Some("Estudos e Acadêmico".to_string()), 0.82, is_generic);
+        return (Some("Documentos/Estudos".to_string()), 0.85, is_generic);
     }
 
-    // 8. Documentos de Texto / PDF sem palavra-chave específica
+    // 4. Documentos de Trabalho e Negócios
+    let work_keywords = [
+        "relatorio", "apresentacao", "slides", "ata_de_reuniao", "projeto", "orcamento",
+        "proposta_comercial", "briefing", "cronograma", "planejamento", "report", "presentation",
+        "proposal", "budget", "project_plan", "meeting_minutes", "reuniao", "comercial",
+    ];
+    if contains_word_token(&lower, &work_keywords) {
+        return (Some("Documentos/Trabalho".to_string()), 0.85, is_generic);
+    }
+
+    // 5. Planilhas (Padrão Trabalho)
+    let sheet_exts = ["xlsx", "xls", "csv", "ods", "tsv", "xlsm", "numbers"];
+    if sheet_exts.contains(&effective_ext) {
+        let conf = if is_generic { 0.60 } else { 0.80 };
+        return (Some("Documentos/Trabalho".to_string()), conf, is_generic);
+    }
+
+    // 6. Documentação Técnica (.md, .rst)
+    let markdown_exts = ["md", "markdown", "rst", "adoc", "tex", "log"];
+    if markdown_exts.contains(&effective_ext) {
+        return (Some("Documentos/Trabalho".to_string()), 0.75, is_generic);
+    }
+
+    // 7. Documentos de Texto / PDF sem palavra-chave específica (Fallback com baixa confiança)
     let doc_exts = ["pdf", "docx", "doc", "odt", "rtf", "txt"];
     if doc_exts.contains(&effective_ext) {
-        return (Some("Documentos".to_string()), 0.50, is_generic);
+        return (Some("Documentos/Trabalho".to_string()), 0.50, is_generic);
     }
 
-    (None, 0.20, is_generic)
+    (Some("Nao-Identificados".to_string()), 0.30, is_generic)
 }
 
 /// Verifica se o nome do arquivo e puramente numerico, timestamp ou aleatorio
@@ -643,4 +716,181 @@ pub fn contains_word_token(text: &str, keywords: &[&str]) -> bool {
     }
 
     false
+}
+
+/// Identifica a categoria global apropriada para uma pasta íntegra/organizada (como um jogo PEAK ou repositório Git).
+/// Retorna o caminho de destino relativo completo (ex: "Executaveis/Jogos-Indies-Portateis/PEAK", "Projetos/Repositorios-GitHub/MeuApp").
+pub fn detect_folder_global_category(folder_rel_path: &str, files: &[&FileMeta]) -> String {
+    let lower_folder = folder_rel_path.to_lowercase();
+
+    // 1. Verificar Projetos de Código e Repositórios
+    let project_marker_files = [
+        "package.json", "cargo.toml", "cargo.lock", "makefile", "cmakelists.txt",
+        "requirements.txt", "pyproject.toml", "setup.py", "go.mod", "dockerfile",
+        "docker-compose.yml", "tsconfig.json", "pom.xml", "build.gradle",
+        "solution.sln", ".csproj", ".vcxproj", "readme.md",
+    ];
+
+    let has_project_marker = files.iter().any(|f| {
+        let name_lower = f.filename.to_lowercase();
+        project_marker_files.contains(&name_lower.as_str()) || name_lower.ends_with(".sln") || name_lower.ends_with(".csproj")
+    });
+
+    let has_code_files = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        is_code_or_script_extension(&ext)
+    });
+
+    if has_project_marker || has_code_files {
+        let is_github = files.iter().any(|f| {
+            let p_lower = f.path.to_lowercase();
+            p_lower.contains(".git") || p_lower.contains("github")
+        }) || {
+            if let Some(first) = files.first() {
+                if let Some(parent) = Path::new(&first.path).parent() {
+                    let git_config = parent.join(".git").join("config");
+                    if git_config.exists() {
+                        std::fs::read_to_string(&git_config)
+                            .map(|content| content.to_lowercase().contains("github.com"))
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+
+        if is_github {
+            return format!("Projetos/Repositorios-GitHub/{}", folder_rel_path);
+        } else {
+            return format!("Projetos/Repositorios-Locais/{}", folder_rel_path);
+        }
+    }
+
+    // 2. Verificar Modelos 3D / CAD
+    let is_3d_cad = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ["blend", "stl", "step", "obj", "fbx", "dae", "3ds", "iges", "dwg", "dxf"].contains(&ext.as_str())
+    });
+    if is_3d_cad {
+        return format!("Projetos/Modelos-3D-CAD/{}", folder_rel_path);
+    }
+
+    // 3. Verificar Jogos e Softwares / Executáveis
+    let has_executable = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ext == "exe" || ext == "msi" || ext == "appimage"
+    });
+    let has_app_support = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ["dll", "pak", "dat", "cfg", "ini", "bin", "so", "pck", "rpf"].contains(&ext.as_str())
+    });
+
+    if has_executable || has_app_support {
+        // Steam
+        let is_steam = files.iter().any(|f| {
+            let name_lower = f.filename.to_lowercase();
+            let path_lower = f.path.to_lowercase();
+            name_lower.contains("steam_api") || name_lower.starts_with("appmanifest_") || path_lower.contains("steamapps")
+        });
+        if is_steam {
+            return format!("Executaveis/Jogos-Steam/{}", folder_rel_path);
+        }
+
+        // Epic Games
+        let is_epic = files.iter().any(|f| {
+            let name_lower = f.filename.to_lowercase();
+            let path_lower = f.path.to_lowercase();
+            name_lower.contains(".egstore") || path_lower.contains(".egstore") || path_lower.contains("epic games")
+        });
+        if is_epic {
+            return format!("Executaveis/Jogos-Epicgames/{}", folder_rel_path);
+        }
+
+        // Navegadores
+        let is_browser = files.iter().any(|f| {
+            let name = f.filename.to_lowercase();
+            name.contains("chrome") || name.contains("firefox") || name.contains("brave") || name.contains("msedge") || name.contains("opera")
+        });
+        if is_browser {
+            return format!("Executaveis/Aplicativos-Navegadores/{}", folder_rel_path);
+        }
+
+        // IDEs
+        let is_ide = files.iter().any(|f| {
+            let name = f.filename.to_lowercase();
+            name.contains("code") || name.contains("idea") || name.contains("pycharm") || name.contains("cursor") || name.contains("sublime") || name.contains("nvim")
+        });
+        if is_ide {
+            return format!("Executaveis/Aplicativos-IDEs/{}", folder_rel_path);
+        }
+
+        // Jogos Indies / Portáteis (ex: PEAK, jogos com .pak, .pck, Unreal, Unity)
+        let is_game = files.iter().any(|f| {
+            let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+            let name = f.filename.to_lowercase();
+            ext == "pck" || ext == "pak" || ext == "rpf" || name.contains("unity") || name.contains("unreal") || name.contains("game") || name.contains("jogo")
+        }) || lower_folder.contains("game") || lower_folder.contains("jogo") || lower_folder.contains("peak");
+
+        if is_game {
+            return format!("Executaveis/Jogos-Indies-Portateis/{}", folder_rel_path);
+        }
+
+        return format!("Executaveis/Aplicativos-Utilitarios/{}", folder_rel_path);
+    }
+
+    // 4. Mídia
+    let is_images = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ["jpg", "jpeg", "png", "webp", "gif", "svg", "bmp", "psd", "ai"].contains(&ext.as_str())
+    });
+    let is_videos = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ["mp4", "mkv", "avi", "mov", "webm", "flv"].contains(&ext.as_str())
+    });
+    let is_audios = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ["mp3", "wav", "flac", "aac", "ogg", "m4a"].contains(&ext.as_str())
+    });
+
+    if is_images {
+        return format!("Media/Imagens-Fotografias/{}", folder_rel_path);
+    }
+    if is_videos {
+        return format!("Media/Videos-Gravacoes/{}", folder_rel_path);
+    }
+    if is_audios {
+        return format!("Media/Audios-Musicas/{}", folder_rel_path);
+    }
+
+    // 5. Documentos
+    let is_docs = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ["pdf", "docx", "doc", "xlsx", "xls", "pptx", "txt", "md"].contains(&ext.as_str())
+    });
+    if is_docs {
+        if lower_folder.contains("estud") || lower_folder.contains("aula") || lower_folder.contains("livro") || lower_folder.contains("curso") {
+            return format!("Documentos/Estudos/{}", folder_rel_path);
+        } else if lower_folder.contains("fiscal") || lower_folder.contains("boleto") || lower_folder.contains("fatura") || lower_folder.contains("recibo") {
+            return format!("Documentos/Fiscais-Pessoais/{}", folder_rel_path);
+        } else {
+            return format!("Documentos/Trabalho/{}", folder_rel_path);
+        }
+    }
+
+    // 6. Compactados
+    let is_compressed = files.iter().any(|f| {
+        let ext = f.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        ["zip", "rar", "7z", "tar", "gz", "bz2"].contains(&ext.as_str())
+    });
+    if is_compressed {
+        return format!("Compactados-Backups/{}", folder_rel_path);
+    }
+
+    // Fallback: Se não for possível determinar com precisão
+    format!("Nao-Identificados/{}", folder_rel_path)
 }

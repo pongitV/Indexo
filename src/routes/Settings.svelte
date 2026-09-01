@@ -1,12 +1,47 @@
 <script lang="ts">
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { locale, _ } from "svelte-i18n";
-  import { currentView, theme, language, showToast } from "../lib/stores";
+  import {
+    currentView,
+    theme,
+    language,
+    showToast,
+    selectedFolder,
+    classifiedFiles,
+    aiFolderSuggestions,
+  } from "../lib/stores";
   import {
     exportProfile,
     importProfile,
     saveSetting,
+    clearAllUserData,
   } from "../lib/api";
+
+  let showClearModal = false;
+  let clearConfirmInput = "";
+  let isClearing = false;
+
+  async function handleExecuteClearAll() {
+    if (clearConfirmInput.trim().toLowerCase() !== "sim") {
+      showToast("Digite 'sim' para autorizar a exclusão.", "error");
+      return;
+    }
+
+    isClearing = true;
+    try {
+      await clearAllUserData("sim");
+      classifiedFiles.set([]);
+      selectedFolder.set("");
+      aiFolderSuggestions.set([]);
+      showClearModal = false;
+      showToast("Todos os dados do perfil foram limpos e resetados com sucesso!", "success");
+      currentView.set("folder-select");
+    } catch (err: any) {
+      showToast("Erro ao limpar dados: " + err, "error");
+    } finally {
+      isClearing = false;
+    }
+  }
 
   async function handleThemeChange(t: "light" | "dark" | "system") {
     theme.set(t);
@@ -200,22 +235,99 @@
       </div>
     </section>
 
-    <!-- Safety & System Protections Section -->
-    <section class="settings-card glass-panel safety-card">
+    <!-- Danger Zone: Reset & Limpar Dados do Usuário -->
+    <section class="settings-card glass-panel danger-card">
       <div class="card-header">
-        <div class="card-icon emerald">
+        <div class="card-icon red">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <line x1="10" y1="11" x2="10" y2="17"></line>
+            <line x1="14" y1="11" x2="14" y2="17"></line>
           </svg>
         </div>
         <div>
-          <h2>{$_("settings.safety_section")}</h2>
-          <p class="card-desc">{$_("settings.safety_desc")}</p>
+          <h2>Limpar Todos os Dados do Usuário</h2>
+          <p class="card-desc">Redefine o banco de dados do Indexo, removendo regras aprendidas, histórico, categorias criadas e configurações.</p>
         </div>
+      </div>
+
+      <div class="danger-action-row">
+        <button class="danger-btn" on:click={() => { showClearModal = true; clearConfirmInput = ""; }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Limpar Todos os Dados...
+        </button>
       </div>
     </section>
   </div>
 </div>
+
+<!-- Modal: Confirmação de Limpeza Total -->
+{#if showClearModal}
+  <div
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    on:click|self={() => (showClearModal = false)}
+    on:keydown={(e) => e.key === "Escape" && (showClearModal = false)}
+  >
+    <div class="modal-card">
+      <div class="modal-header-danger">
+        <div class="danger-badge-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d14d41" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+        <h2>Limpar Todos os Dados do Perfil?</h2>
+      </div>
+
+      <p class="modal-warning-text">
+        Esta ação apagará permanentemente:
+      </p>
+
+      <ul class="danger-points-list">
+        <li>Todas as regras personalizadas e histórico de versões</li>
+        <li>Todo o aprendizado e padrões acumulados pela IA</li>
+        <li>Histórico de sessões de organização e logs de auditoria</li>
+        <li>Categorias e tags customizadas criadas pelo usuário</li>
+      </ul>
+
+      <div class="confirmation-input-box">
+        <label for="confirm-clear-text">
+          Para confirmar a exclusão permanente, digite <strong>sim</strong> no campo abaixo:
+        </label>
+        <input
+          id="confirm-clear-text"
+          type="text"
+          placeholder="Digite sim para confirmar"
+          bind:value={clearConfirmInput}
+          class="text-input"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="modal-actions">
+        <button class="secondary-btn" on:click={() => (showClearModal = false)}>Cancelar</button>
+        <button
+          class="danger-btn-solid"
+          disabled={clearConfirmInput.trim().toLowerCase() !== "sim" || isClearing}
+          on:click={handleExecuteClearAll}
+        >
+          {#if isClearing}
+            Apagando...
+          {:else}
+            Confirmar e Apagar Tudo
+          {/if}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .settings-view {
@@ -283,11 +395,6 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-  }
-
-  .card-icon.emerald {
-    background: var(--accent-light);
-    color: var(--accent-emerald);
   }
 
   .lang-code-pill {
@@ -451,8 +558,168 @@
     background: var(--bg-hover);
   }
 
-  .safety-card {
-    border-left: 4px solid var(--accent-emerald);
+  .danger-card {
+    border: 1px solid rgba(209, 77, 65, 0.35);
+    background: rgba(209, 77, 65, 0.04);
+  }
+
+  .card-icon.red {
+    background: rgba(209, 77, 65, 0.15);
+    color: #d14d41;
+  }
+
+  .danger-action-row {
+    margin-top: 0.5rem;
+  }
+
+  .danger-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    border-radius: var(--radius-md);
+    background: rgba(209, 77, 65, 0.12);
+    border: 1px solid rgba(209, 77, 65, 0.4);
+    color: #d14d41;
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .danger-btn:hover {
+    background: rgba(209, 77, 65, 0.22);
+    border-color: #d14d41;
+  }
+
+  /* Danger Confirmation Modal */
+  .modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(16, 15, 15, 0.75);
+    backdrop-filter: blur(4px);
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .modal-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    width: 520px;
+    max-width: 95vw;
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    gap: 1rem;
+  }
+
+  .modal-header-danger {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .modal-header-danger h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #d14d41;
+    margin: 0;
+  }
+
+  .danger-badge-icon {
+    background: rgba(209, 77, 65, 0.15);
+    padding: 0.4rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-warning-text {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .danger-points-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .confirmation-input-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    padding: 0.85rem;
+    margin-top: 0.25rem;
+  }
+
+  .confirmation-input-box label {
+    font-size: 0.82rem;
+    color: var(--text-primary);
+  }
+
+  .text-input {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    outline: none;
+  }
+
+  .text-input:focus {
+    border-color: #d14d41;
+  }
+
+  .modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .danger-btn-solid {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #d14d41;
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 0.55rem 1.1rem;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 120ms ease;
+  }
+
+  .danger-btn-solid:hover:not(:disabled) {
+    background: #b83a2f;
+  }
+
+  .danger-btn-solid:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   @keyframes fadeIn {

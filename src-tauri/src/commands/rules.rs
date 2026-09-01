@@ -1,4 +1,4 @@
-use crate::db::models::{CreateCustomRuleInput, CustomRule, LearnedRuleInfo, StorageAnalytics};
+use crate::db::models::{BuiltinCategoryConfig, CreateCustomRuleInput, CustomRule, CustomRuleHistoryRecord, LearnedRuleInfo, StorageAnalytics};
 use tauri::State;
 
 #[tauri::command]
@@ -26,6 +26,24 @@ pub async fn update_custom_rule(
 }
 
 #[tauri::command]
+pub async fn restore_custom_rule_original(
+    state: State<'_, crate::AppState>,
+    id: String,
+) -> Result<CustomRule, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.restore_custom_rule_original(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_custom_rule_history(
+    state: State<'_, crate::AppState>,
+    rule_id: String,
+) -> Result<Vec<CustomRuleHistoryRecord>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_custom_rule_history(&rule_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn delete_custom_rule(
     state: State<'_, crate::AppState>,
     id: String,
@@ -42,6 +60,38 @@ pub async fn toggle_custom_rule(
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.toggle_custom_rule(&id, is_enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_builtin_rules_config(state: State<'_, crate::AppState>) -> Result<Vec<BuiltinCategoryConfig>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    Ok(db.get_active_builtin_categories())
+}
+
+#[tauri::command]
+pub async fn save_builtin_rule_config(
+    state: State<'_, crate::AppState>,
+    config: BuiltinCategoryConfig,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.save_builtin_category_config(config).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn reset_builtin_rule_config(
+    state: State<'_, crate::AppState>,
+    id: String,
+) -> Result<BuiltinCategoryConfig, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.reset_builtin_category_config(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn reset_all_builtin_rules_config(
+    state: State<'_, crate::AppState>,
+) -> Result<Vec<BuiltinCategoryConfig>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.reset_all_builtin_categories_config().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -64,3 +114,5 @@ pub async fn get_storage_analytics(state: State<'_, crate::AppState>) -> Result<
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.get_storage_analytics().map_err(|e| e.to_string())
 }
+
+

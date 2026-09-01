@@ -23,6 +23,8 @@ pub struct ClassifiedFile {
     pub is_already_organized: bool,
     #[serde(default)]
     pub original_relative_folder: Option<String>,
+    #[serde(default)]
+    pub is_unidentified: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -98,9 +100,11 @@ pub async fn classify_scanned_files(
         let coherence = crate::engine::heuristics::calculate_folder_coherence(&folder_files, &rules);
 
         // Se a subpasta é legítima (não é pasta de descarte e possui coerência mínima ou estrutura), preserva 100% intacta
+        // e roteia para a categoria global correspondente (ex: Executaveis/Jogos-Indies-Portateis/PEAK ou Projetos/Repositorios-GitHub/Nome)
         if coherence >= 0.40 || rel_folder.contains('/') {
+            let global_dest = crate::engine::heuristics::detect_folder_global_category(&rel_folder, &folder_files);
             for idx in indices {
-                already_organized_map.insert(idx, rel_folder.clone());
+                already_organized_map.insert(idx, global_dest.clone());
             }
         }
     }
@@ -122,18 +126,21 @@ pub async fn classify_scanned_files(
         resolved_map.insert(idx, (rel_folder.clone(), 1.0, 1));
     }
 
-    // Prioridade 0.5: Regras Customizadas do Usuário
-    let custom_rules = {
+    // Prioridade 0.5: Regras Customizadas do Usuário e Heurísticas Customizadas
+    let (enabled_custom_rules, builtin_configs) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
-        db.list_custom_rules().unwrap_or_default()
+        let customs = db.list_custom_rules().unwrap_or_default();
+        let builtins = db.get_active_builtin_categories();
+        (customs.into_iter().filter(|r| r.is_enabled).collect::<Vec<_>>(), builtins)
     };
-    let enabled_custom_rules: Vec<_> = custom_rules.into_iter().filter(|r| r.is_enabled).collect();
 
     for (idx, meta) in file_metas.iter().enumerate() {
         if already_organized_map.contains_key(&idx) {
             continue;
         }
 
+        // 1. Regras customizadas explícitas do usuário
+        let mut matched_custom = false;
         for rule in &enabled_custom_rules {
             let matched = match rule.condition_field.as_str() {
                 "extension" => {
@@ -166,6 +173,33 @@ pub async fn classify_scanned_files(
             if matched {
                 if rule.action_type == "move_category" || rule.action_type == "apply_tag" {
                     resolved_map.insert(idx, (rule.action_value.clone(), 1.0, 1));
+                    matched_custom = true;
+                    break;
+                }
+            }
+        }
+
+        if matched_custom {
+            continue;
+        }
+
+        // 2. Heurísticas Padrão / Customizadas pelo Usuário (se modificadas)
+        let ext = meta.extension_declared.as_deref().unwrap_or("").to_lowercase();
+        let filename_lower = meta.filename.to_lowercase();
+
+        for cat in &builtin_configs {
+            if !cat.is_enabled || !cat.is_customized {
+                continue;
+            }
+
+            if cat.extensions.iter().any(|e| e.eq_ignore_ascii_case(&ext)) {
+                if !cat.keywords.is_empty() {
+                    if cat.keywords.iter().any(|kw| filename_lower.contains(&kw.to_lowercase())) {
+                        resolved_map.insert(idx, (cat.target_path.clone(), 0.95, 1));
+                        break;
+                    }
+                } else {
+                    resolved_map.insert(idx, (cat.target_path.clone(), 0.90, 1));
                     break;
                 }
             }
@@ -299,7 +333,30 @@ pub async fn classify_scanned_files(
         }
     }
 
-    let subcategory_map = crate::engine::subcategories::refine_hierarchical_subcategories(&unorganized_items);
+    let (subcategory_map, discovered_clusters) = crate::engine::subcategories::refine_hierarchical_subcategories(&unorganized_items);
+
+    // Emite sugestões semânticas da IA para a tela de Regras
+    if !discovered_clusters.is_empty() {
+        #[derive(Serialize, Clone, Debug)]
+        struct FolderSuggestionPayload {
+            id: String,
+            folder_path: String,
+            reason: String,
+            suggested_at: String,
+        }
+
+        let suggestions: Vec<FolderSuggestionPayload> = discovered_clusters
+            .into_iter()
+            .map(|c| FolderSuggestionPayload {
+                id: uuid::Uuid::new_v4().to_string(),
+                folder_path: c.folder_path,
+                reason: c.reason,
+                suggested_at: "Varredura Semântica".to_string(),
+            })
+            .collect();
+
+        let _ = window.emit("classify://suggestions", suggestions);
+    }
 
     // =========================================================================
     // PERSISTÊNCIA E CONSTRUÇÃO DA RESPOSTA FINAL
@@ -319,18 +376,14 @@ pub async fn classify_scanned_files(
                 if let Some(guess) = &heuristic_results[idx].1.category_guess {
                     (guess.clone(), heuristic_results[idx].1.confidence.max(0.60), 1)
                 } else {
-                    let default_name = if language.starts_with("en") {
-                        "Other Files".to_string()
-                    } else {
-                        "Outros Arquivos".to_string()
-                    };
-                    (default_name, 0.50, 1)
+                    let default_name = "Nao-Identificados".to_string();
+                    (default_name, 0.35, 1)
                 }
             });
 
-        // Se for uma pasta/arquivo já organizado e preservado, NÃO criamos categorias nem tags no banco
+        // Se for uma pasta/arquivo já organizado e preservado, usamos o caminho de destino determinado
         let (suggested_cat_name, cat_id, cat_color) = if is_organized {
-            let display_name = orig_rel.clone().unwrap_or_else(|| "Preservado".to_string());
+            let display_name = orig_rel.clone().unwrap_or_else(|| "Nao-Identificados".to_string());
             (display_name, "".to_string(), None)
         } else {
             // Se não for pré-organizado e tiver subcategoria refinada calculada
@@ -354,6 +407,12 @@ pub async fn classify_scanned_files(
             (category.name, category.id, category.color)
         };
 
+        let is_unidentified = !is_organized
+            && (cat_name.starts_with("Nao-Identificados")
+                || cat_name == "Outros Arquivos"
+                || cat_name == "Other Files"
+                || confidence < 0.60);
+
         let classified = ClassifiedFile {
             file_id: f.id.clone(),
             path: f.original_path.clone(),
@@ -366,6 +425,7 @@ pub async fn classify_scanned_files(
             size_bytes: f.size_bytes.max(0) as u64,
             is_already_organized: is_organized,
             original_relative_folder: orig_rel,
+            is_unidentified,
         };
 
         final_results.push(classified.clone());

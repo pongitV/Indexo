@@ -145,11 +145,14 @@ pub struct OrganizationSessionSummary {
 pub struct CustomRule {
     pub id: String,
     pub name: String,
-    pub condition_field: String,    // 'extension' | 'filename_contains' | 'content_contains' | 'size_greater' | 'size_smaller'
-    pub condition_operator: String, // 'equals' | 'contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than'
+    pub condition_field: String,    // 'extension' | 'filename_contains' | 'content_contains' | 'size_greater' | 'size_smaller' | 'parent_folder'
+    pub condition_operator: String, // 'equals' | 'contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'regex_match'
     pub condition_value: String,
     pub action_type: String,        // 'move_category' | 'rename_pattern' | 'apply_tag'
     pub action_value: String,
+    pub subfolder_behavior: String, // 'auto' | 'none' | 'by_year' | 'by_pattern'
+    pub original_config: Option<String>,
+    pub version: i64,
     pub is_enabled: bool,
     pub priority: i64,
     pub created_at: String,
@@ -164,7 +167,25 @@ pub struct CreateCustomRuleInput {
     pub condition_value: String,
     pub action_type: String,
     pub action_value: String,
+    pub subfolder_behavior: Option<String>,
     pub priority: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomRuleHistoryRecord {
+    pub id: String,
+    pub rule_id: String,
+    pub name: String,
+    pub condition_field: String,
+    pub condition_operator: String,
+    pub condition_value: String,
+    pub action_type: String,
+    pub action_value: String,
+    pub subfolder_behavior: String,
+    pub priority: i64,
+    pub version: i64,
+    pub saved_at: String,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,3 +248,19 @@ pub struct DuplicateResolveAction {
     pub action_type: String, // 'trash' | 'delete' | 'archive_folder'
     pub archive_folder_path: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuiltinCategoryConfig {
+    pub id: String,
+    pub group_name: String,
+    pub display_name: String,
+    pub target_path: String,
+    pub description: String,
+    pub extensions: Vec<String>,
+    pub keywords: Vec<String>,
+    pub subfolders: Vec<String>,
+    pub subfolder_behavior: String, // 'auto' | 'none' | 'by_year' | 'by_pattern'
+    pub is_enabled: bool,
+    pub is_customized: bool,
+}
+

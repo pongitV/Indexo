@@ -60,11 +60,18 @@ fn main() {
             commands::rules::create_custom_rule,
             commands::rules::list_custom_rules,
             commands::rules::update_custom_rule,
+            commands::rules::restore_custom_rule_original,
+            commands::rules::get_custom_rule_history,
             commands::rules::delete_custom_rule,
             commands::rules::toggle_custom_rule,
+            commands::rules::get_builtin_rules_config,
+            commands::rules::save_builtin_rule_config,
+            commands::rules::reset_builtin_rule_config,
+            commands::rules::reset_all_builtin_rules_config,
             commands::rules::list_all_learned_rules,
             commands::rules::delete_learned_rule,
             commands::rules::get_storage_analytics,
+            commands::profile::clear_all_user_data,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Indexo");

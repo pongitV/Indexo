@@ -55,7 +55,7 @@ mod tests {
         let res = heuristics::classify_by_heuristics(&meta, &rules);
 
         assert!(res.category_guess.is_some());
-        assert_eq!(res.category_guess.unwrap(), "Boletos e Faturas");
+        assert_eq!(res.category_guess.unwrap(), "Documentos/Fiscais-Pessoais");
         assert!(res.confidence >= 0.75);
     }
 
@@ -74,7 +74,7 @@ mod tests {
         let res = heuristics::classify_by_heuristics(&meta, &rules);
 
         assert!(res.category_guess.is_some());
-        assert_eq!(res.category_guess.unwrap(), "Comprovantes e Recibos");
+        assert_eq!(res.category_guess.unwrap(), "Documentos/Fiscais-Pessoais");
         assert!(res.confidence >= 0.75);
     }
 
@@ -167,19 +167,28 @@ mod tests {
             ("f5".to_string(), "Foto_Aleatoria_Avulsa.jpg".to_string(), "Fotos e Imagens".to_string()),
             ("f6".to_string(), "Fatura_Enel_Janeiro.pdf".to_string(), "Boletos e Faturas".to_string()),
             ("f7".to_string(), "Conta_Luz_Enel_Fevereiro.pdf".to_string(), "Boletos e Faturas".to_string()),
+            ("f8".to_string(), "Pokemon_Emerald.gba".to_string(), "Executaveis/GBA".to_string()),
+            ("f9".to_string(), "Pokemon_Ruby.gba".to_string(), "Executaveis/GBA".to_string()),
+            ("f10".to_string(), "Pokemon_FireRed.gba".to_string(), "Executaveis/GBA".to_string()),
         ];
 
-        let refined = subcategories::refine_hierarchical_subcategories(&items);
+        let (refined, suggestions) = subcategories::refine_hierarchical_subcategories(&items);
 
-        assert_eq!(refined.get("f1").unwrap(), "Fotos e Imagens/Jogos/Zelda");
-        assert_eq!(refined.get("f2").unwrap(), "Fotos e Imagens/Jogos/Zelda");
-        assert_eq!(refined.get("f3").unwrap(), "Fotos e Imagens/Jogos/Minecraft");
-        assert_eq!(refined.get("f4").unwrap(), "Fotos e Imagens/Jogos/Minecraft");
+        assert_eq!(refined.get("f1").unwrap(), "Fotos e Imagens/Zelda");
+        assert_eq!(refined.get("f2").unwrap(), "Fotos e Imagens/Zelda");
+        assert_eq!(refined.get("f3").unwrap(), "Fotos e Imagens/Minecraft");
+        assert_eq!(refined.get("f4").unwrap(), "Fotos e Imagens/Minecraft");
         // Arquivo avulso fica na categoria principal
         assert_eq!(refined.get("f5").unwrap(), "Fotos e Imagens");
         // Boletos da Enel
         assert_eq!(refined.get("f6").unwrap(), "Boletos e Faturas/Enel");
         assert_eq!(refined.get("f7").unwrap(), "Boletos e Faturas/Enel");
+        // 3 jogos Pokemon geram subpasta Pokemon
+        assert_eq!(refined.get("f8").unwrap(), "Executaveis/GBA/Pokemon");
+        assert_eq!(refined.get("f9").unwrap(), "Executaveis/GBA/Pokemon");
+        assert_eq!(refined.get("f10").unwrap(), "Executaveis/GBA/Pokemon");
+        // Deve ter sugerido Pokemon porque count >= 3
+        assert!(suggestions.iter().any(|s| s.folder_path == "Executaveis/GBA/Pokemon"));
     }
 
     #[test]
@@ -288,7 +297,7 @@ mod tests {
             modified_at: "".to_string(),
         };
         let res1 = heuristics::classify_by_heuristics(&bat_runtime, &rules);
-        assert_eq!(res1.category_guess, Some("Código e Desenvolvimento".to_string()));
+        assert_eq!(res1.category_guess, Some("Projetos/Scripts-Automacoes".to_string()));
 
         let bat_estimativa = FileMeta {
             path: r"C:\Dev\estimativa_vendas.bat".to_string(),
@@ -300,19 +309,19 @@ mod tests {
             modified_at: "".to_string(),
         };
         let res2 = heuristics::classify_by_heuristics(&bat_estimativa, &rules);
-        assert_eq!(res2.category_guess, Some("Código e Desenvolvimento".to_string()));
+        assert_eq!(res2.category_guess, Some("Projetos/Scripts-Automacoes".to_string()));
 
-        let md_declaracao = FileMeta {
-            path: r"C:\Docs\declaracao_escopo.md".to_string(),
-            filename: "declaracao_escopo.md".to_string(),
+        let md_trabalho = FileMeta {
+            path: r"C:\Docs\proposta_comercial_projeto.md".to_string(),
+            filename: "proposta_comercial_projeto.md".to_string(),
             extension_declared: Some("md".to_string()),
             extension_detected: Some("md".to_string()),
             size_bytes: 1200,
             created_at: "".to_string(),
             modified_at: "".to_string(),
         };
-        let res3 = heuristics::classify_by_heuristics(&md_declaracao, &rules);
-        assert_eq!(res3.category_guess, Some("Documentos e Documentação".to_string()));
+        let res3 = heuristics::classify_by_heuristics(&md_trabalho, &rules);
+        assert_eq!(res3.category_guess, Some("Documentos/Trabalho".to_string()));
 
         let bat_survivor = FileMeta {
             path: r"C:\Games\survivor_game.bat".to_string(),
@@ -324,7 +333,7 @@ mod tests {
             modified_at: "".to_string(),
         };
         let res4 = heuristics::classify_by_heuristics(&bat_survivor, &rules);
-        assert_eq!(res4.category_guess, Some("Código e Desenvolvimento".to_string()));
+        assert_eq!(res4.category_guess, Some("Projetos/Scripts-Automacoes".to_string()));
 
         // 2. Boletos reais em PDF continuam sendo perfeitamente detectados
         let pdf_fatura_tim = FileMeta {
@@ -337,7 +346,7 @@ mod tests {
             modified_at: "".to_string(),
         };
         let res5 = heuristics::classify_by_heuristics(&pdf_fatura_tim, &rules);
-        assert_eq!(res5.category_guess, Some("Boletos e Faturas".to_string()));
+        assert_eq!(res5.category_guess, Some("Documentos/Fiscais-Pessoais".to_string()));
 
         let pdf_conta_luz = FileMeta {
             path: r"C:\Docs\conta_de_luz_enel_2024.pdf".to_string(),
@@ -349,7 +358,7 @@ mod tests {
             modified_at: "".to_string(),
         };
         let res6 = heuristics::classify_by_heuristics(&pdf_conta_luz, &rules);
-        assert_eq!(res6.category_guess, Some("Boletos e Faturas".to_string()));
+        assert_eq!(res6.category_guess, Some("Documentos/Fiscais-Pessoais".to_string()));
     }
 
     #[test]
@@ -419,5 +428,46 @@ mod tests {
 
         let project_coherence = heuristics::calculate_folder_coherence(&[&p_pkg, &p_md], &rules);
         assert_eq!(project_coherence, 0.98, "Projeto de código com package.json deve ter coerência máxima 0.98");
+    }
+
+    #[test]
+    fn test_rom_platform_classification() {
+        let rules: Vec<ClassificationRule> = Vec::new();
+
+        let gba_file = FileMeta {
+            path: r"C:\Emulators\Pokemon_Emerald.gba".to_string(),
+            filename: "Pokemon_Emerald.gba".to_string(),
+            extension_declared: Some("gba".to_string()),
+            extension_detected: Some("gba".to_string()),
+            size_bytes: 16000000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let res_gba = heuristics::classify_by_heuristics(&gba_file, &rules);
+        assert_eq!(res_gba.category_guess, Some("Executaveis/Jogos-Emuladores-ROMs/Game-Boy-Advance-GBA".to_string()));
+
+        let snes_file = FileMeta {
+            path: r"C:\Emulators\Super_Mario_World.sfc".to_string(),
+            filename: "Super_Mario_World.sfc".to_string(),
+            extension_declared: Some("sfc".to_string()),
+            extension_detected: Some("sfc".to_string()),
+            size_bytes: 2000000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let res_snes = heuristics::classify_by_heuristics(&snes_file, &rules);
+        assert_eq!(res_snes.category_guess, Some("Executaveis/Jogos-Emuladores-ROMs/Super-Nintendo-SNES".to_string()));
+
+        let switch_file = FileMeta {
+            path: r"C:\Emulators\Zelda_TOTK.nsp".to_string(),
+            filename: "Zelda_TOTK.nsp".to_string(),
+            extension_declared: Some("nsp".to_string()),
+            extension_detected: Some("nsp".to_string()),
+            size_bytes: 16000000000,
+            created_at: "".to_string(),
+            modified_at: "".to_string(),
+        };
+        let res_switch = heuristics::classify_by_heuristics(&switch_file, &rules);
+        assert_eq!(res_switch.category_guess, Some("Executaveis/Jogos-Emuladores-ROMs/Nintendo-Switch".to_string()));
     }
 }

@@ -256,3 +256,17 @@ pub async fn save_setting(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.set_setting(&key, &value).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn clear_all_user_data(
+    confirmation: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    if confirmation.trim().to_lowercase() != "sim" {
+        return Err("Confirmação inválida. É necessário digitar exatamente 'sim' para autorizar a limpeza de todos os dados.".to_string());
+    }
+
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.clear_all_user_data().map_err(|e| e.to_string())
+}
+

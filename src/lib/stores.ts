@@ -12,6 +12,28 @@ export const theme = writable<"light" | "dark" | "system">("system");
 export const language = writable<"pt-BR" | "en-US">("pt-BR");
 export const alsoRenameInOrganization = writable<boolean>(false);
 
+export interface FolderSuggestion {
+  id: string;
+  folder_path: string;
+  reason: string;
+  suggested_at: string;
+}
+
+export const aiFolderSuggestions = writable<FolderSuggestion[]>([
+  {
+    id: "sug-1",
+    folder_path: "Projetos/Scripts-Python",
+    reason: "Identificado padrão recorrente de scripts e módulos Python (.py, requirements.txt)",
+    suggested_at: "Aprendizado Contínuo",
+  },
+  {
+    id: "sug-2",
+    folder_path: "Media/Imagens-Fotografias/Wallpapers-4K",
+    reason: "Agrupamento semântico de imagens em alta resolução e proporção widescreen",
+    suggested_at: "Reconhecimento Visual",
+  },
+]);
+
 export interface ToastMessage {
   id: string;
   message: string;

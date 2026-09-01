@@ -1,11 +1,25 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-/// Refina categorias planas criando subcategorias hierárquicas (ex: "Fotos e Imagens/Zelda", "Boletos e Faturas/Enel")
-/// quando 2 ou mais arquivos da mesma categoria compartilham um assunto, franquia, empresa ou prefixo comum.
+/// Informações sobre agrupamento semântico dinâmico descoberto pela IA
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct DiscoveredCluster {
+    pub folder_path: String,
+    pub token: String,
+    pub count: usize,
+    pub reason: String,
+}
+
+/// Refina categorias planas criando subcategorias hierárquicas dinâmicas (sem hardcode)
+/// quando 2 ou mais arquivos da mesma categoria compartilham um assunto, franquia, padrão ou ano comum.
+/// Retorna:
+/// 1. Mapa de file_id -> subcategoria refinada
+/// 2. Lista de sugestões de pastas descobertas dinamicamente
 pub fn refine_hierarchical_subcategories(
     items: &[(String, String, String)], // (file_id, filename, current_category)
-) -> HashMap<String, String> { // file_id -> refined_category_path
+) -> (HashMap<String, String>, Vec<DiscoveredCluster>) {
     let mut result: HashMap<String, String> = HashMap::new();
+    let mut discovered_suggestions: Vec<DiscoveredCluster> = Vec::new();
 
     // 1. Agrupar itens por categoria principal
     let mut by_category: HashMap<String, Vec<(String, String)>> = HashMap::new();
@@ -17,7 +31,7 @@ pub fn refine_hierarchical_subcategories(
     }
 
     for (main_cat, file_list) in by_category {
-        // Se a categoria tiver menos de 2 arquivos, não há o que agrupar em subpastas
+        // Se a categoria tiver menos de 2 arquivos, mantém na categoria pai
         if file_list.len() < 2 {
             for (id, _) in file_list {
                 result.insert(id, main_cat.clone());
@@ -25,162 +39,209 @@ pub fn refine_hierarchical_subcategories(
             continue;
         }
 
-        // 2. Extrai entidade/assunto candidato para cada arquivo
-        let mut entity_map: HashMap<String, Vec<String>> = HashMap::new(); // entity -> Vec<file_id>
-        let mut file_entity_match: HashMap<String, String> = HashMap::new(); // file_id -> entity
+        // =========================================================================
+        // A. PARSER DE ÁUDIO E MÚSICA (Artista - Álbum / Artista - Faixa)
+        // =========================================================================
+        if main_cat.starts_with("Media/Audios") || main_cat.contains("Audio") || main_cat.contains("Musica") {
+            let mut audio_artist_map: HashMap<String, Vec<String>> = HashMap::new(); // Artist -> Vec<file_id>
+            let mut file_artist_match: HashMap<String, (String, Option<String>)> = HashMap::new(); // file_id -> (Artist, Option<Album>)
 
-        for (id, filename) in &file_list {
-            if let Some(entity) = extract_subject_entity(filename, &main_cat) {
-                entity_map.entry(entity.clone()).or_default().push(id.clone());
-                file_entity_match.insert(id.clone(), entity);
+            for (id, filename) in &file_list {
+                if let Some((artist, album)) = extract_audio_structure(filename) {
+                    audio_artist_map.entry(artist.clone()).or_default().push(id.clone());
+                    file_artist_match.insert(id.clone(), (artist, album));
+                }
             }
-        }
 
-        // 3. Apenas entidades que aparecem em >= 2 arquivos formam subcategoria
-        for (id, _) in file_list {
-            if let Some(entity) = file_entity_match.get(&id) {
-                if let Some(matching_ids) = entity_map.get(entity) {
-                    if matching_ids.len() >= 2 {
-                        let subcategory_path = format!("{}/{}", main_cat, entity);
-                        result.insert(id, subcategory_path);
-                        continue;
+            for (id, _) in &file_list {
+                if let Some((artist, maybe_album)) = file_artist_match.get(id) {
+                    if let Some(matching_ids) = audio_artist_map.get(artist) {
+                        if matching_ids.len() >= 2 {
+                            let mut path = format!("{}/{}", main_cat, artist);
+                            if let Some(album) = maybe_album {
+                                path.push('/');
+                                path.push_str(album);
+                            }
+                            result.insert(id.clone(), path);
+                            continue;
+                        }
                     }
                 }
             }
-            // Arquivos avulsos permanecem na categoria principal
-            result.insert(id, main_cat.clone());
+        }
+
+        // =========================================================================
+        // B. MINERAÇÃO DINÂMICA DE TOKENS E N-GRAMAS (Sem listas fixas)
+        // =========================================================================
+        // Para cada arquivo, extrai tokens limpos significativos
+        let mut file_tokens: Vec<(String, Vec<String>)> = Vec::new(); // (file_id, tokens)
+        let mut token_counts: HashMap<String, HashSet<String>> = HashMap::new(); // token -> Set<file_id>
+
+        for (id, filename) in &file_list {
+            if result.contains_key(id) {
+                continue; // já resolvido por áudio
+            }
+
+            let tokens = extract_semantic_tokens(filename);
+            for t in &tokens {
+                token_counts.entry(t.clone()).or_default().insert(id.clone());
+            }
+            file_tokens.push((id.clone(), tokens));
+        }
+
+        // Seleciona os melhores tokens com frequência >= 2 arquivos
+        // Ordena por maior frequência e depois por maior comprimento do token (mais específico)
+        let mut candidate_tokens: Vec<(String, usize)> = token_counts
+            .iter()
+            .filter(|(_, ids)| ids.len() >= 2)
+            .map(|(t, ids)| (t.clone(), ids.len()))
+            .collect();
+
+        candidate_tokens.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.len().cmp(&a.0.len())));
+
+        // Associa cada arquivo ao seu melhor token compartilhado
+        let mut file_assigned: HashSet<String> = HashSet::new();
+
+        for (best_token, count) in candidate_tokens {
+            let matching_file_ids = token_counts.get(&best_token).unwrap();
+            let unassigned_matches: Vec<&String> = matching_file_ids
+                .iter()
+                .filter(|id| !file_assigned.contains(*id) && !result.contains_key(*id))
+                .collect();
+
+            if unassigned_matches.len() >= 2 {
+                let formatted_subfolder = format_subfolder_name(&best_token, &main_cat);
+                let subcategory_path = format!("{}/{}", main_cat, formatted_subfolder);
+
+                for id in unassigned_matches {
+                    file_assigned.insert(id.clone());
+                    result.insert(id.clone(), subcategory_path.clone());
+                }
+
+                // Se houver >= 3 arquivos com este padrão descoberto, registra como sugestão proativa da IA
+                if count >= 3 {
+                    discovered_suggestions.push(DiscoveredCluster {
+                        folder_path: subcategory_path.clone(),
+                        token: best_token.clone(),
+                        count,
+                        reason: format!(
+                            "Identificado padrão recorrente '{}' em {} arquivos de {}",
+                            formatted_subfolder, count, main_cat
+                        ),
+                    });
+                }
+            }
+        }
+
+        // Arquivos avulsos restantes permanecem na categoria principal
+        for (id, _) in file_list {
+            if !result.contains_key(&id) {
+                result.insert(id, main_cat.clone());
+            }
         }
     }
 
-    result
+    (result, discovered_suggestions)
 }
 
-/// Extrai a entidade semântica principal do nome do arquivo (jogo, empresa, assunto ou prefixo compartilhado)
-fn extract_subject_entity(filename: &str, category: &str) -> Option<String> {
+/// Extrai tokens semânticos limpos de um nome de arquivo
+fn extract_semantic_tokens(filename: &str) -> Vec<String> {
     let stem = std::path::Path::new(filename)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
 
     if stem.trim().is_empty() {
-        return None;
+        return Vec::new();
     }
 
-    let lower = stem.to_lowercase();
-    let cat_lower = category.to_lowercase();
-
-    // 1. Dicionário de Jogos e Franquias Frequentes
-    let games: &[(&[&str], &str)] = &[
-        (&["zelda", "botw", "totk", "hyrule"], "Zelda"),
-        (&["minecraft", "mcbuild", "mc_"], "Minecraft"),
-        (&["gta", "grand_theft_auto", "san_andreas", "vice_city"], "GTA"),
-        (&["valorant", "val_"], "Valorant"),
-        (&["csgo", "counter_strike", "cs2"], "Counter-Strike"),
-        (&["pokemon", "pokémon", "pokemmo"], "Pokémon"),
-        (&["mario", "super_mario", "luigi", "bowser"], "Super Mario"),
-        (&["fortnite", "fort_"], "Fortnite"),
-        (&["elden_ring", "eldenring", "tarnished"], "Elden Ring"),
-        (&["dark_souls", "darksouls", "darksouls3"], "Dark Souls"),
-        (&["cyberpunk", "cp2077"], "Cyberpunk 2077"),
-        (&["skyrim", "elder_scrolls", "tesv"], "Skyrim"),
-        (&["witcher", "witcher3", "geralt"], "The Witcher"),
-        (&["god_of_war", "gow", "kratos"], "God of War"),
-        (&["league_of_legends", "leagueoflegends", "lol_"], "League of Legends"),
-        (&["overwatch", "ow2"], "Overwatch"),
-        (&["roblox"], "Roblox"),
-        (&["genshin", "genshin_impact"], "Genshin Impact"),
-        (&["red_dead", "rdr2", "reddead"], "Red Dead Redemption"),
-        (&["fifa", "ea_fc", "eafc", "pes20"], "Futebol & FIFA"),
-        (&["the_sims", "sims4", "sims3"], "The Sims"),
-        (&["hollow_knight", "silksong"], "Hollow Knight"),
-        (&["resident_evil", "re2", "re4", "re8"], "Resident Evil"),
-        (&["assassins_creed", "ac_valhalla", "ac_odyssey"], "Assassin's Creed"),
-    ];
-
-    if cat_lower.contains("foto") || cat_lower.contains("imagem") || cat_lower.contains("vídeo") || cat_lower.contains("jogo") {
-        for (aliases, proper_name) in games {
-            for alias in *aliases {
-                if lower.contains(alias) {
-                    return Some(format!("Jogos/{}", proper_name));
-                }
-            }
-        }
-    }
-
-    // 2. Dicionário de Empresas, Bancos e Concessionárias (Boletos, Faturas, Comprovantes)
-    let companies: &[(&[&str], &str)] = &[
-        (&["enel"], "Enel"),
-        (&["sabesp"], "Sabesp"),
-        (&["sanepar"], "Sanepar"),
-        (&["cemig"], "Cemig"),
-        (&["copel"], "Copel"),
-        (&["cpfl"], "CPFL"),
-        (&["claro", "net_claro"], "Claro"),
-        (&["vivo", "telefonica"], "Vivo"),
-        (&["tim"], "TIM"),
-        (&["oi_fibra", "oi_telecom"], "Oi"),
-        (&["nubank", "nu_pagamentos"], "Nubank"),
-        (&["itau", "itaú"], "Itaú"),
-        (&["bradesco"], "Bradesco"),
-        (&["santander"], "Santander"),
-        (&["inter", "banco_inter"], "Banco Inter"),
-        (&["c6", "c6_bank"], "C6 Bank"),
-        (&["caixa", "cef"], "Caixa Econômica"),
-        (&["banco_do_brasil", "bb_"], "Banco do Brasil"),
-        (&["neon"], "Neon"),
-        (&["picpay"], "PicPay"),
-        (&["mercado_pago", "mercadopago"], "Mercado Pago"),
-    ];
-
-    if cat_lower.contains("boleto") || cat_lower.contains("fatura") || cat_lower.contains("comprovante") || cat_lower.contains("extrato") {
-        for (aliases, proper_name) in companies {
-            for alias in *aliases {
-                if lower.contains(alias) {
-                    return Some(proper_name.to_string());
-                }
-            }
-        }
-    }
-
-    // 3. Dicionário de Assuntos Temáticos Pessoais / Eventos
-    let subjects: &[(&[&str], &str)] = &[
-        (&["viagem", "ferias", "férias", "trip", "vacation"], "Viagens e Férias"),
-        (&["praia", "beach", "mar", "litoral"], "Praia"),
-        (&["aniversario", "aniversário", "birthday", "bday"], "Aniversários"),
-        (&["casamento", "wedding"], "Casamentos"),
-        (&["formatura", "graduation"], "Formaturas"),
-        (&["trabalho", "projeto", "project"], "Projetos"),
-        (&["screenshot", "captura", "print"], "Capturas de Tela"),
-        (&["scan", "scanner", "digitalizado"], "Digitalizados"),
-        (&["imovel", "aluguel", "locacao", "locação", "condominio"], "Imóvel e Aluguel"),
-        (&["carro", "veiculo", "veículo", "ipva", "crlv", "multa"], "Veículo e Transporte"),
-        (&["saude", "saúde", "exame", "medico", "médico", "receita"], "Saúde e Medicina"),
-    ];
-
-    for (aliases, proper_name) in subjects {
-        for alias in *aliases {
-            if lower.contains(alias) {
-                return Some(proper_name.to_string());
-            }
-        }
-    }
-
-    // 4. Extração de Prefixo / Token Identificador Comum
-    // Ex: "ProjetoAlpha_v1", "ProjetoAlpha_v2" -> "ProjetoAlpha"
     let clean_stem = clean_leading_noise(&stem);
-    let tokens: Vec<&str> = clean_stem
-        .split(|c: char| c == '_' || c == '-' || c == ' ' || c == '.')
-        .filter(|t| t.len() >= 3 && !is_noise_token(t))
+    let raw_tokens: Vec<&str> = clean_stem
+        .split(|c: char| c == '_' || c == '-' || c == ' ' || c == '.' || c == '(' || c == ')' || c == '[' || c == ']')
+        .filter(|t| !t.trim().is_empty())
         .collect();
 
-    if let Some(first_meaningful_token) = tokens.first() {
-        let cap = capitalize_token(first_meaningful_token);
-        if cap.len() >= 3 {
-            return Some(cap);
+    let mut tokens: Vec<String> = Vec::new();
+
+    // 1. Unigramas limpos
+    for t in &raw_tokens {
+        let t_clean = t.trim().to_lowercase();
+        if t_clean.len() >= 3 && !is_stopword_or_noise(&t_clean) {
+            tokens.push(t_clean);
+        }
+    }
+
+    // 2. Bigramas significativos (ex: "super mario", "dark souls", "elden ring", "banco inter")
+    for i in 0..raw_tokens.len().saturating_sub(1) {
+        let t1 = raw_tokens[i].trim().to_lowercase();
+        let t2 = raw_tokens[i + 1].trim().to_lowercase();
+        if t1.len() >= 3 && t2.len() >= 3 && !is_stopword_or_noise(&t1) && !is_stopword_or_noise(&t2) {
+            tokens.push(format!("{}-{}", t1, t2));
+        }
+    }
+
+    tokens
+}
+
+/// Extrai Artista e Álbum para arquivos de mídia/áudio
+fn extract_audio_structure(filename: &str) -> Option<(String, Option<String>)> {
+    let stem = std::path::Path::new(filename)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Padrão comum: "Artista - Álbum - 01 Faixa" ou "Artista - Faixa"
+    if stem.contains(" - ") {
+        let parts: Vec<&str> = stem.split(" - ").map(|p| p.trim()).filter(|p| !p.is_empty()).collect();
+        if parts.len() >= 3 {
+            let artist = capitalize_words(parts[0]);
+            let album = capitalize_words(parts[1]);
+            return Some((artist, Some(album)));
+        } else if parts.len() == 2 {
+            let artist = capitalize_words(parts[0]);
+            return Some((artist, None));
         }
     }
 
     None
+}
+
+/// Formata o nome da subpasta de forma elegante (PascalCase com hífens)
+fn format_subfolder_name(token: &str, category: &str) -> String {
+    let cat_lower = category.to_lowercase();
+
+    // Se for jogos ou ROMs e tiver padrão conhecido
+    let is_game = cat_lower.contains("jogo") || cat_lower.contains("rom") || cat_lower.contains("executaveis");
+    
+    // Normaliza partes com hífen
+    let parts: Vec<String> = token
+        .split('-')
+        .map(|p| capitalize_words(p))
+        .collect();
+
+    let joined = parts.join("-");
+
+    // Para jogos ou franquias conhecidas de mídia, se for um nome simples
+    if is_game && !joined.starts_with("Jogos-") && !joined.starts_with("Saga-") {
+        // Se o usuário preferir nomes diretos de franquias:
+        joined
+    } else {
+        joined
+    }
+}
+
+fn capitalize_words(s: &str) -> String {
+    s.split(|c: char| c == '_' || c == '-' || c == ' ')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + chars.as_str().to_lowercase().as_str(),
+            }
+        })
+        .collect::<Vec<String>>()
+        .join("-")
 }
 
 fn clean_leading_noise(s: &str) -> &str {
@@ -208,21 +269,14 @@ fn clean_leading_noise(s: &str) -> &str {
     s
 }
 
-fn is_noise_token(t: &str) -> bool {
+fn is_stopword_or_noise(t: &str) -> bool {
     let lower = t.to_lowercase();
     let noise = [
         "final", "edit", "copia", "copy", "novo", "new", "temp", "tmp",
         "versao", "version", "v1", "v2", "v3", "v4", "v5", "page", "pag",
         "part", "parte", "doc", "file", "arquivo", "img", "foto", "photo",
-        "ano", "mes", "dia", "2020", "2021", "2022", "2023", "2024", "2025", "2026",
+        "ano", "mes", "dia", "pdf", "png", "jpg", "mp4", "zip", "txt", "docx",
+        "the", "and", "para", "com", "dos", "das", "por", "que",
     ];
     noise.contains(&lower.as_str()) || t.chars().all(|c| c.is_ascii_digit())
-}
-
-fn capitalize_token(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-    }
 }

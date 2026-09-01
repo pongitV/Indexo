@@ -105,14 +105,35 @@ CREATE INDEX IF NOT EXISTS idx_category_history_cat ON category_history(category
 CREATE TABLE IF NOT EXISTS custom_rules (
     id                 TEXT PRIMARY KEY,
     name               TEXT NOT NULL,
-    condition_field    TEXT NOT NULL, -- 'extension' | 'filename_contains' | 'content_contains' | 'size_greater' | 'size_smaller'
-    condition_operator TEXT NOT NULL, -- 'equals' | 'contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than'
+    condition_field    TEXT NOT NULL, -- 'extension' | 'filename_contains' | 'content_contains' | 'size_greater' | 'size_smaller' | 'parent_folder'
+    condition_operator TEXT NOT NULL, -- 'equals' | 'contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'regex_match'
     condition_value    TEXT NOT NULL,
     action_type        TEXT NOT NULL, -- 'move_category' | 'rename_pattern' | 'apply_tag'
     action_value       TEXT NOT NULL,
+    subfolder_behavior TEXT NOT NULL DEFAULT 'auto', -- 'auto' | 'none' | 'by_year' | 'by_pattern'
+    original_config    TEXT,          -- Snapshot JSON do estado original
+    version            INTEGER NOT NULL DEFAULT 1,
     is_enabled         INTEGER NOT NULL DEFAULT 1,
     priority           INTEGER NOT NULL DEFAULT 10,
     created_at         TEXT NOT NULL,
     updated_at         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_custom_rules_enabled ON custom_rules(is_enabled);
+
+CREATE TABLE IF NOT EXISTS custom_rule_history (
+    id                 TEXT PRIMARY KEY,
+    rule_id            TEXT NOT NULL,
+    name               TEXT NOT NULL,
+    condition_field    TEXT NOT NULL,
+    condition_operator TEXT NOT NULL,
+    condition_value    TEXT NOT NULL,
+    action_type        TEXT NOT NULL,
+    action_value       TEXT NOT NULL,
+    subfolder_behavior TEXT NOT NULL DEFAULT 'auto',
+    priority           INTEGER NOT NULL DEFAULT 10,
+    version            INTEGER NOT NULL DEFAULT 1,
+    saved_at           TEXT NOT NULL,
+    note               TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_custom_rule_history_rule ON custom_rule_history(rule_id);
+

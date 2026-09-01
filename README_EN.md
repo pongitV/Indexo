@@ -113,20 +113,29 @@ flowchart TD
 * Smart keep suggestions (*Cleanest name*, *Highest resolution*, *Newest*).
 * Safe deletion via **Windows Recycle Bin** or optional permanent purge.
 
-### 3. Custom, Default, and AI Rules Manager
-* Visual condition builder (*Equal to*, *Contains*, *Starts with*, *Ends with*, *Greater than*, *Less than*).
-* View all system built-in classification heuristics.
-* Inspect and prune rules learned automatically from manual user overrides.
+### 3. Custom, Built-in (Editable) & AI Rules Builder
+* **Full Built-in Heuristics Customization**: Customize recognized file extensions, active subfolders, grouping behavior (`Auto`, `By Year`, etc.), and semantic keywords for each native system category (`Media`, `Executaveis`, `Documentos`, `Projetos`, etc.).
+* **Granular Section & Full Factory Reset**: Revert just extensions, just subfolders, or restore entire categories / full factory defaults with a single click.
+* **Visual Custom Rules Builder**: Create prioritized conditional rules (*IF [field] [operator] [value] THEN [action]*).
+* **AI Learned Rules Auditing**: Indexo automatically learns patterns from manual user reclassifications in Preview or the Unidentified files modal without any hardcoded assumptions.
 
-### 4. Context-Aware Semantic Renamer
+### 4. Standardized Hyphenated Taxonomy & Specialized Subfolders
+* Strict folder taxonomy using clean hyphens instead of spaces:
+  - `Media/Imagens-Fotografias`, `Media/Videos-Gravacoes`, `Media/Audios-Musicas`
+  - `Executaveis/Jogos-Emuladores-ROMs` (with platform subfolders for *Nintendo-NES*, *Super-Nintendo-SNES*, *Nintendo-64*, *Nintendo-Switch*, *PlayStation*, *Sega*, etc.), `Executaveis/Aplicativos-Utilitarios`, `Executaveis/Instaladores-Setups`
+  - `Documentos/Fiscais-Pessoais`, `Documentos/Trabalho`, `Documentos/Estudos`
+  - `Projetos/Repositorios-GitHub`, `Projetos/Repositorios-Locais`, `Projetos/Modelos-3D-CAD`, `Projetos/Scripts-Automacoes`
+
+### 5. Context-Aware Semantic Renamer
 * Batch sanitization removing camera/messenger noise (`IMG_`, `WA_`, `Scan_`).
 * Standardized names with formatted dates, category context, and sequence counters.
 * Full renaming history with 1-click restore.
 
-### 5. History, Comparative Trees & Storage Analytics
-* Transaction log of all completed organization and renaming sessions.
+### 6. History, Comparative Trees & Storage Analytics
+* Chronological transaction log of all organization and renaming sessions with **Undo** support.
 * 3 interactive views per session: **Proposed Tree**, **Created Categories**, **Created Tags**, and **Moved Files**.
 * **Storage & Analytics Widget**: Total space organized, total cataloged files, and proportional volume breakdown.
+* **Full User Data Reset with Safe Confirmation**: Option in Settings to purge all SQLite databases and local profiles by typing `"sim"`.
 
 ---
 

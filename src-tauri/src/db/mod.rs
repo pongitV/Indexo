@@ -32,6 +32,9 @@ impl Database {
              PRAGMA mmap_size = 268435456;",
         )?;
         conn.execute_batch(include_str!("schema.sql"))?;
+        let _ = conn.execute("ALTER TABLE custom_rules ADD COLUMN subfolder_behavior TEXT DEFAULT 'auto'", []);
+        let _ = conn.execute("ALTER TABLE custom_rules ADD COLUMN original_config TEXT", []);
+        let _ = conn.execute("ALTER TABLE custom_rules ADD COLUMN version INTEGER DEFAULT 1", []);
         Ok(Self { conn })
     }
 
@@ -45,6 +48,9 @@ impl Database {
              PRAGMA mmap_size = 268435456;",
         )?;
         conn.execute_batch(include_str!("schema.sql"))?;
+        let _ = conn.execute("ALTER TABLE custom_rules ADD COLUMN subfolder_behavior TEXT DEFAULT 'auto'", []);
+        let _ = conn.execute("ALTER TABLE custom_rules ADD COLUMN original_config TEXT", []);
+        let _ = conn.execute("ALTER TABLE custom_rules ADD COLUMN version INTEGER DEFAULT 1", []);
         Ok(Self { conn })
     }
 
@@ -87,37 +93,48 @@ impl Database {
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let priority = input.priority.unwrap_or(10);
+        let subfolder = input.subfolder_behavior.unwrap_or_else(|| "auto".to_string());
 
-        self.conn.execute(
-            "INSERT INTO custom_rules (id, name, condition_field, condition_operator, condition_value, action_type, action_value, is_enabled, priority, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10)",
-            params![id, input.name, input.condition_field, input.condition_operator, input.condition_value, input.action_type, input.action_value, priority, now, now],
-        )?;
-
-        Ok(models::CustomRule {
-            id,
-            name: input.name,
-            condition_field: input.condition_field,
-            condition_operator: input.condition_operator,
-            condition_value: input.condition_value,
-            action_type: input.action_type,
-            action_value: input.action_value,
+        let initial_rule = models::CustomRule {
+            id: id.clone(),
+            name: input.name.clone(),
+            condition_field: input.condition_field.clone(),
+            condition_operator: input.condition_operator.clone(),
+            condition_value: input.condition_value.clone(),
+            action_type: input.action_type.clone(),
+            action_value: input.action_value.clone(),
+            subfolder_behavior: subfolder.clone(),
+            original_config: None,
+            version: 1,
             is_enabled: true,
             priority,
             created_at: now.clone(),
-            updated_at: now,
-        })
+            updated_at: now.clone(),
+        };
+
+        let orig_json = serde_json::to_string(&initial_rule).ok();
+
+        self.conn.execute(
+            "INSERT INTO custom_rules (id, name, condition_field, condition_operator, condition_value, action_type, action_value, subfolder_behavior, original_config, version, is_enabled, priority, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, 1, ?10, ?11, ?12)",
+            params![id, input.name, input.condition_field, input.condition_operator, input.condition_value, input.action_type, input.action_value, subfolder, orig_json, priority, now, now],
+        )?;
+
+        let mut res = initial_rule;
+        res.original_config = orig_json;
+        Ok(res)
     }
 
     pub fn list_custom_rules(&self) -> anyhow::Result<Vec<models::CustomRule>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, condition_field, condition_operator, condition_value, action_type, action_value, is_enabled, priority, created_at, updated_at
+            "SELECT id, name, condition_field, condition_operator, condition_value, action_type, action_value,
+                    COALESCE(subfolder_behavior, 'auto'), original_config, COALESCE(version, 1), is_enabled, priority, created_at, updated_at
              FROM custom_rules
              ORDER BY priority DESC, created_at DESC",
         )?;
 
         let rows = stmt.query_map([], |row| {
-            let is_enabled_int: i64 = row.get(7)?;
+            let is_enabled_int: i64 = row.get(10)?;
             Ok(models::CustomRule {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -126,10 +143,13 @@ impl Database {
                 condition_value: row.get(4)?,
                 action_type: row.get(5)?,
                 action_value: row.get(6)?,
+                subfolder_behavior: row.get(7)?,
+                original_config: row.get(8)?,
+                version: row.get(9)?,
                 is_enabled: is_enabled_int != 0,
-                priority: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+                priority: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
             })
         })?;
 
@@ -142,21 +162,390 @@ impl Database {
 
     pub fn update_custom_rule(&self, rule: models::CustomRule) -> anyhow::Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
+
+        // 1. Snapshot da versão anterior antes de atualizar
+        if let Ok(prev) = self.conn.query_row(
+            "SELECT id, name, condition_field, condition_operator, condition_value, action_type, action_value, COALESCE(subfolder_behavior, 'auto'), priority, COALESCE(version, 1)
+             FROM custom_rules WHERE id = ?1",
+            params![rule.id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, i64>(8)?,
+                    row.get::<_, i64>(9)?,
+                ))
+            },
+        ) {
+            let hist_id = uuid::Uuid::new_v4().to_string();
+            let _ = self.conn.execute(
+                "INSERT INTO custom_rule_history (id, rule_id, name, condition_field, condition_operator, condition_value, action_type, action_value, subfolder_behavior, priority, version, saved_at, note)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![hist_id, prev.0, prev.1, prev.2, prev.3, prev.4, prev.5, prev.6, prev.7, prev.8, prev.9, now, "Edição do usuário"],
+            );
+        }
+
+        let next_version = rule.version + 1;
         self.conn.execute(
             "UPDATE custom_rules SET
                 name = ?1, condition_field = ?2, condition_operator = ?3, condition_value = ?4,
-                action_type = ?5, action_value = ?6, is_enabled = ?7, priority = ?8, updated_at = ?9
-             WHERE id = ?10",
+                action_type = ?5, action_value = ?6, subfolder_behavior = ?7, version = ?8,
+                is_enabled = ?9, priority = ?10, updated_at = ?11
+             WHERE id = ?12",
             params![
                 rule.name, rule.condition_field, rule.condition_operator, rule.condition_value,
-                rule.action_type, rule.action_value, if rule.is_enabled { 1 } else { 0 }, rule.priority, now, rule.id
+                rule.action_type, rule.action_value, rule.subfolder_behavior, next_version,
+                if rule.is_enabled { 1 } else { 0 }, rule.priority, now, rule.id
             ],
         )?;
         Ok(())
     }
 
+    pub fn restore_custom_rule_original(&self, rule_id: &str) -> anyhow::Result<models::CustomRule> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let orig_json: Option<String> = self.conn.query_row(
+            "SELECT original_config FROM custom_rules WHERE id = ?1",
+            params![rule_id],
+            |row| row.get(0),
+        )?;
+
+        if let Some(json_str) = orig_json {
+            if let Ok(orig_rule) = serde_json::from_str::<models::CustomRule>(&json_str) {
+                // Registra snapshot antes de restaurar
+                let hist_id = uuid::Uuid::new_v4().to_string();
+                let _ = self.conn.execute(
+                    "INSERT INTO custom_rule_history (id, rule_id, name, condition_field, condition_operator, condition_value, action_type, action_value, subfolder_behavior, priority, version, saved_at, note)
+                     SELECT ?1, id, name, condition_field, condition_operator, condition_value, action_type, action_value, subfolder_behavior, priority, version, ?2, 'Antes de restaurar original'
+                     FROM custom_rules WHERE id = ?3",
+                    params![hist_id, now, rule_id],
+                );
+
+                let current_version: i64 = self.conn.query_row(
+                    "SELECT COALESCE(version, 1) FROM custom_rules WHERE id = ?1",
+                    params![rule_id],
+                    |row| row.get(0),
+                ).unwrap_or(1);
+                let next_version = current_version + 1;
+
+                self.conn.execute(
+                    "UPDATE custom_rules SET
+                        name = ?1, condition_field = ?2, condition_operator = ?3, condition_value = ?4,
+                        action_type = ?5, action_value = ?6, subfolder_behavior = ?7, version = ?8,
+                        priority = ?9, updated_at = ?10
+                     WHERE id = ?11",
+                    params![
+                        orig_rule.name, orig_rule.condition_field, orig_rule.condition_operator, orig_rule.condition_value,
+                        orig_rule.action_type, orig_rule.action_value, orig_rule.subfolder_behavior, next_version,
+                        orig_rule.priority, now, rule_id
+                    ],
+                )?;
+
+                return Ok(models::CustomRule {
+                    id: rule_id.to_string(),
+                    name: orig_rule.name,
+                    condition_field: orig_rule.condition_field,
+                    condition_operator: orig_rule.condition_operator,
+                    condition_value: orig_rule.condition_value,
+                    action_type: orig_rule.action_type,
+                    action_value: orig_rule.action_value,
+                    subfolder_behavior: orig_rule.subfolder_behavior,
+                    original_config: Some(json_str),
+                    version: next_version,
+                    is_enabled: true,
+                    priority: orig_rule.priority,
+                    created_at: orig_rule.created_at,
+                    updated_at: now,
+                });
+            }
+        }
+
+        anyhow::bail!("Configuração original não encontrada para esta regra.")
+    }
+
+    pub fn get_custom_rule_history(&self, rule_id: &str) -> anyhow::Result<Vec<models::CustomRuleHistoryRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, rule_id, name, condition_field, condition_operator, condition_value, action_type, action_value,
+                    COALESCE(subfolder_behavior, 'auto'), priority, version, saved_at, note
+             FROM custom_rule_history
+             WHERE rule_id = ?1
+             ORDER BY version DESC, saved_at DESC",
+        )?;
+
+        let rows = stmt.query_map(params![rule_id], |row| {
+            Ok(models::CustomRuleHistoryRecord {
+                id: row.get(0)?,
+                rule_id: row.get(1)?,
+                name: row.get(2)?,
+                condition_field: row.get(3)?,
+                condition_operator: row.get(4)?,
+                condition_value: row.get(5)?,
+                action_type: row.get(6)?,
+                action_value: row.get(7)?,
+                subfolder_behavior: row.get(8)?,
+                priority: row.get(9)?,
+                version: row.get(10)?,
+                saved_at: row.get(11)?,
+                note: row.get(12)?,
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    pub fn clear_all_user_data(&self) -> anyhow::Result<()> {
+        self.conn.execute("DELETE FROM move_log", [])?;
+        self.conn.execute("DELETE FROM file_categories", [])?;
+        self.conn.execute("DELETE FROM user_corrections", [])?;
+        self.conn.execute("DELETE FROM category_history", [])?;
+        self.conn.execute("DELETE FROM custom_rule_history", [])?;
+        self.conn.execute("DELETE FROM custom_rules", [])?;
+        self.conn.execute("DELETE FROM classification_rules", [])?;
+        self.conn.execute("DELETE FROM files", [])?;
+        self.conn.execute("DELETE FROM scan_sessions", [])?;
+        self.conn.execute("DELETE FROM embeddings_cache", [])?;
+        self.conn.execute("DELETE FROM categories WHERE created_by = 'user'", [])?;
+        let _ = self.reset_all_builtin_categories_config();
+        Ok(())
+    }
+
+    // ==========================================
+    // REGRAS E HEURÍSTICAS PADRÃO (BUILT-IN CONFIG)
+    // ==========================================
+
+    pub fn get_default_builtin_categories() -> Vec<models::BuiltinCategoryConfig> {
+        vec![
+            models::BuiltinCategoryConfig {
+                id: "media-images".to_string(),
+                group_name: "Media".to_string(),
+                display_name: "Imagens e Fotografias".to_string(),
+                target_path: "Media/Imagens-Fotografias".to_string(),
+                description: "Fotografias, capturas de tela, wallpapers, artes vetoriais e gráficos".to_string(),
+                extensions: vec!["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "tiff", "ico", "raw", "heic", "psd", "ai", "eps", "xcf", "cr2", "nef", "arw"].into_iter().map(String::from).collect(),
+                keywords: vec!["screenshot", "wallpaper", "foto", "foto_", "img_", "captura", "arte", "banner"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Fotografias", "Wallpapers", "Capturas-Tela", "Design-Vetores"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "media-videos".to_string(),
+                group_name: "Media".to_string(),
+                display_name: "Vídeos e Gravações".to_string(),
+                target_path: "Media/Videos-Gravacoes".to_string(),
+                description: "Filmes, gravações de tela, clipes de jogos e tutoriais".to_string(),
+                extensions: vec!["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "3gp", "ts", "mpg", "mpeg"].into_iter().map(String::from).collect(),
+                keywords: vec!["video", "gravacao", "clip", "replay", "screen", "gameplay", "filme"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Gravacoes-Tela", "Clipes-Jogos", "Filmes-Series", "Tutoriais"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "media-audio".to_string(),
+                group_name: "Media".to_string(),
+                display_name: "Áudios e Músicas".to_string(),
+                target_path: "Media/Audios-Musicas".to_string(),
+                description: "Músicas, podcasts, efeitos sonoros (SFX) e gravações de voz".to_string(),
+                extensions: vec!["mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "mid", "midi", "opus", "aiff", "alac"].into_iter().map(String::from).collect(),
+                keywords: vec!["musica", "audio", "podcast", "sfx", "sound", "track", "faixa", "voz"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Albuns-Artistas", "Podcasts", "Efeitos-Sonoros-SFX", "Gravacoes-Voz"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "exec-roms".to_string(),
+                group_name: "Executaveis".to_string(),
+                display_name: "Jogos, Emuladores e ROMs".to_string(),
+                target_path: "Executaveis/Jogos-Emuladores-ROMs".to_string(),
+                description: "ROMs e imagens de console separadas por plataforma".to_string(),
+                extensions: vec!["nes", "sfc", "smc", "gba", "gbc", "gb", "nds", "3ds", "cia", "n64", "z64", "v64", "nsp", "xci", "rvz", "wbfs", "wad", "gcz", "pbp", "cso", "gen", "smd", "cdi", "gdi", "chd"].into_iter().map(String::from).collect(),
+                keywords: vec!["rom", "emulator", "emulador", "save", "bios", "patch"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Nintendo-NES", "Super-Nintendo-SNES", "Game-Boy-Advance-GBA", "Game-Boy-Color-GBC", "Nintendo-DS", "Nintendo-3DS", "Nintendo-64", "Nintendo-Switch", "Nintendo-Wii-GameCube", "PlayStation-PSP", "PlayStation-1", "PlayStation-2", "PlayStation-3", "Sega-MegaDrive", "Sega-Dreamcast", "Sega-Saturn"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "exec-apps".to_string(),
+                group_name: "Executaveis".to_string(),
+                display_name: "Aplicativos e Softwares".to_string(),
+                target_path: "Executaveis/Aplicativos-Utilitarios".to_string(),
+                description: "Aplicativos instalados, navegadores, IDEs e utilitários".to_string(),
+                extensions: vec!["exe", "msi", "appimage", "dmg", "pkg", "deb", "rpm", "apk"].into_iter().map(String::from).collect(),
+                keywords: vec!["chrome", "firefox", "edge", "vscode", "idea", "photoshop", "figma", "driver"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Aplicativos-Navegadores", "Aplicativos-IDEs", "Aplicativos-Design-Edicao", "Aplicativos-Utilitarios"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "exec-installers".to_string(),
+                group_name: "Executaveis".to_string(),
+                display_name: "Instaladores e Imagens de Disco".to_string(),
+                target_path: "Executaveis/Instaladores-Setups".to_string(),
+                description: "Setups de instalação, drivers de hardware e arquivos ISO".to_string(),
+                extensions: vec!["exe", "msi", "iso", "img", "vhd", "vhdx", "bin", "cue"].into_iter().map(String::from).collect(),
+                keywords: vec!["setup", "installer", "instalador", "driver", "geforce", "realtek"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Instaladores-Setups", "Instaladores-Drivers", "Instaladores-ISOs"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "docs-finance".to_string(),
+                group_name: "Documentos".to_string(),
+                display_name: "Documentos Fiscais e Pessoais".to_string(),
+                target_path: "Documentos/Fiscais-Pessoais".to_string(),
+                description: "Boletos, faturas, comprovantes, recibos, DANFE, notas fiscais e contratos".to_string(),
+                extensions: vec!["pdf", "xml", "docx", "doc", "xlsx", "xls", "txt"].into_iter().map(String::from).collect(),
+                keywords: vec!["boleto", "fatura", "recibo", "comprovante", "danfe", "nota_fiscal", "contrato", "declaracao", "imposto"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Boletos-Faturas", "Comprovantes-Pagamento", "Notas-Fiscais-DANFE", "Contratos-Declaracoes"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "by_year".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "docs-work".to_string(),
+                group_name: "Documentos".to_string(),
+                display_name: "Relatórios e Trabalho".to_string(),
+                target_path: "Documentos/Trabalho".to_string(),
+                description: "Apresentações, planilhas corporativas, relatórios de reuniões e planejamentos".to_string(),
+                extensions: vec!["pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "csv", "txt", "md"].into_iter().map(String::from).collect(),
+                keywords: vec!["relatorio", "report", "reuniao", "projeto", "apresentacao", "slides", "cronograma", "orcamento", "proposta"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Relatorios", "Planilhas-Orcamentos", "Apresentacoes", "Reunioes-Atas"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "by_year".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "docs-study".to_string(),
+                group_name: "Documentos".to_string(),
+                display_name: "Estudos e Acadêmico".to_string(),
+                target_path: "Documentos/Estudos".to_string(),
+                description: "Livros digitais, apostilas, artigos acadêmicos, TCC, teses e resumos".to_string(),
+                extensions: vec!["pdf", "epub", "mobi", "azw3", "cbr", "cbz", "docx", "txt", "md"].into_iter().map(String::from).collect(),
+                keywords: vec!["aula", "exercicio", "tcc", "artigo", "tese", "monografia", "livro", "apostila", "resumo", "curso"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Livros-Ebooks", "Artigos-Teses", "Aulas-Apostilas", "Cursos-Certificados"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "proj-repos".to_string(),
+                group_name: "Projetos".to_string(),
+                display_name: "Repositórios e Código-Fonte".to_string(),
+                target_path: "Projetos/Repositorios-Locais".to_string(),
+                description: "Repositórios de código, scripts de automação e arquivos de desenvolvimento".to_string(),
+                extensions: vec!["rs", "js", "ts", "py", "html", "css", "cpp", "c", "h", "java", "go", "php", "sh", "bat", "ps1", "sql", "json", "yaml", "toml"].into_iter().map(String::from).collect(),
+                keywords: vec!["github", "repo", "script", "automacao", "api", "backend", "frontend"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Repositorios-GitHub", "Repositorios-Locais", "Scripts-Automacoes"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "proj-3d".to_string(),
+                group_name: "Projetos".to_string(),
+                display_name: "Modelos 3D e CAD".to_string(),
+                target_path: "Projetos/Modelos-3D-CAD".to_string(),
+                description: "Cenas do Blender, modelos para impressão 3D e projetos de engenharia".to_string(),
+                extensions: vec!["blend", "stl", "step", "obj", "fbx", "dae", "3ds", "iges", "dwg", "dxf", "blend1", "skp", "ply"].into_iter().map(String::from).collect(),
+                keywords: vec!["model", "render", "print3d", "cad", "blender", "peca", "malha"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Projetos-Blender", "Impressao-3D", "Projetos-CAD-DWG"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "archives-backups".to_string(),
+                group_name: "Compactados-Backups".to_string(),
+                display_name: "Compactados e Backups".to_string(),
+                target_path: "Compactados-Backups".to_string(),
+                description: "Pacotes ZIP, RAR, 7Z e cópias de segurança".to_string(),
+                extensions: vec!["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "tgz", "cab", "lz", "zst", "bak"].into_iter().map(String::from).collect(),
+                keywords: vec!["backup", "archive", "pack", "dist", "bkp"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Backups", "Arquivos-ZIP", "Arquivos-RAR", "Arquivos-7Z"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+            models::BuiltinCategoryConfig {
+                id: "fonts-typography".to_string(),
+                group_name: "Fontes-Tipografia".to_string(),
+                display_name: "Fontes e Tipografia".to_string(),
+                target_path: "Fontes-Tipografia".to_string(),
+                description: "Fontes TrueType, OpenType, WebFonts e ícones tipográficos".to_string(),
+                extensions: vec!["ttf", "otf", "woff", "woff2", "eot", "fon"].into_iter().map(String::from).collect(),
+                keywords: vec!["font", "type", "sans", "serif", "mono", "regular", "bold"].into_iter().map(String::from).collect(),
+                subfolders: vec!["Fontes-Principais", "Icones-Fontes", "Web-Fonts"].into_iter().map(String::from).collect(),
+                subfolder_behavior: "auto".to_string(),
+                is_enabled: true,
+                is_customized: false,
+            },
+        ]
+    }
+
+    pub fn get_active_builtin_categories(&self) -> Vec<models::BuiltinCategoryConfig> {
+        if let Ok(Some(json_str)) = self.get_setting("builtin_categories_config") {
+            if let Ok(saved) = serde_json::from_str::<Vec<models::BuiltinCategoryConfig>>(&json_str) {
+                return saved;
+            }
+        }
+        Self::get_default_builtin_categories()
+    }
+
+    pub fn save_builtin_category_config(&self, mut config: models::BuiltinCategoryConfig) -> anyhow::Result<()> {
+        let mut list = self.get_active_builtin_categories();
+        config.is_customized = true;
+
+        if let Some(pos) = list.iter().position(|c| c.id == config.id) {
+            list[pos] = config;
+        } else {
+            list.push(config);
+        }
+
+        let json_str = serde_json::to_string(&list)?;
+        self.set_setting("builtin_categories_config", &json_str)?;
+        Ok(())
+    }
+
+    pub fn reset_builtin_category_config(&self, id: &str) -> anyhow::Result<models::BuiltinCategoryConfig> {
+        let defaults = Self::get_default_builtin_categories();
+        let default_item = defaults.into_iter().find(|c| c.id == id)
+            .ok_or_else(|| anyhow::anyhow!("Categoria padrão não encontrada"))?;
+
+        let mut list = self.get_active_builtin_categories();
+        if let Some(pos) = list.iter().position(|c| c.id == id) {
+            list[pos] = default_item.clone();
+        }
+
+        let json_str = serde_json::to_string(&list)?;
+        self.set_setting("builtin_categories_config", &json_str)?;
+        Ok(default_item)
+    }
+
+    pub fn reset_all_builtin_categories_config(&self) -> anyhow::Result<Vec<models::BuiltinCategoryConfig>> {
+        let defaults = Self::get_default_builtin_categories();
+        let json_str = serde_json::to_string(&defaults)?;
+        self.set_setting("builtin_categories_config", &json_str)?;
+        Ok(defaults)
+    }
+
     pub fn delete_custom_rule(&self, id: &str) -> anyhow::Result<()> {
         self.conn.execute("DELETE FROM custom_rules WHERE id = ?1", params![id])?;
+        self.conn.execute("DELETE FROM custom_rule_history WHERE rule_id = ?1", params![id])?;
         Ok(())
     }
 
@@ -1134,6 +1523,50 @@ mod tests {
         let remaining_cats = db.list_categories().unwrap();
         assert!(remaining_cats.iter().any(|c| c.id == user_cat.id));
         assert!(!remaining_cats.iter().any(|c| c.id == auto_cat.id));
+
+        // 10. Regras Customizadas: Criação, Edição com Histórico, e Restauração Original
+        let rule_input = models::CreateCustomRuleInput {
+            name: "ROMs Game Boy Advance".to_string(),
+            condition_field: "extension".to_string(),
+            condition_operator: "equals".to_string(),
+            condition_value: "gba".to_string(),
+            action_type: "move_category".to_string(),
+            action_value: "Executaveis/Jogos-Emuladores-ROMs/Game-Boy-Advance-GBA".to_string(),
+            subfolder_behavior: Some("auto".to_string()),
+            priority: Some(80),
+        };
+        let created_rule = db.create_custom_rule(rule_input).unwrap();
+        assert_eq!(created_rule.version, 1);
+        assert!(created_rule.original_config.is_some());
+
+        // Edição da regra
+        let mut updated_rule = created_rule.clone();
+        updated_rule.name = "ROMs GBA Atualizada".to_string();
+        updated_rule.subfolder_behavior = "by_year".to_string();
+        db.update_custom_rule(updated_rule.clone()).unwrap();
+
+        let list = db.list_custom_rules().unwrap();
+        let current = list.iter().find(|r| r.id == created_rule.id).unwrap();
+        assert_eq!(current.version, 2);
+        assert_eq!(current.name, "ROMs GBA Atualizada");
+        assert_eq!(current.subfolder_behavior, "by_year");
+
+        // Histórico registrado
+        let history = db.get_custom_rule_history(&created_rule.id).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].version, 1);
+        assert_eq!(history[0].name, "ROMs Game Boy Advance");
+
+        // Restauração da original
+        let restored = db.restore_custom_rule_original(&created_rule.id).unwrap();
+        assert_eq!(restored.name, "ROMs Game Boy Advance");
+        assert_eq!(restored.subfolder_behavior, "auto");
+        assert_eq!(restored.version, 3); // incrementa versão mantendo rastreabilidade
+
+        // 11. Limpar Todos os Dados do Usuário
+        db.clear_all_user_data().unwrap();
+        assert_eq!(db.list_custom_rules().unwrap().len(), 0);
+        assert_eq!(db.get_classification_rules().unwrap().len(), 0);
     }
 }
 

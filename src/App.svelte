@@ -8,6 +8,7 @@
     selectedFolder,
     classifiedFiles,
     toastMessages,
+    aiFolderSuggestions,
   } from "./lib/stores";
   import { getSetting, saveSetting } from "./lib/api";
 
@@ -33,6 +34,17 @@
       if (savedLang && (savedLang === "pt-BR" || savedLang === "en-US")) {
         language.set(savedLang as any);
       }
+    } catch (_) {}
+
+    // Escutar sugestões semânticas da IA
+    try {
+      await onClassifySuggestions((suggestions) => {
+        aiFolderSuggestions.update((existing) => {
+          const paths = new Set(existing.map((s) => s.folder_path));
+          const newOnes = suggestions.filter((s) => !paths.has(s.folder_path));
+          return [...existing, ...newOnes];
+        });
+      });
     } catch (_) {}
   });
 
@@ -256,7 +268,89 @@
         {/if}
       </div>
 
-      <!-- 4. Dropdown Gerenciar (Tags, Categorias, Regras) -->
+      <!-- 2. Dropdown Ferramentas (Renomear, Duplicatas, Histórico) -->
+      <div class="dropdown-container">
+        <button
+          class="nav-btn dropdown-trigger"
+          class:active={$currentView === "renamer" || $currentView === "duplicates" || $currentView === "history"}
+          class:is-open={openDropdown === "tools"}
+          on:click|stopPropagation={() => toggleDropdown("tools")}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          <span>Ferramentas</span>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            class="chevron-icon"
+            class:open={openDropdown === "tools"}
+          >
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        {#if openDropdown === "tools"}
+          <div class="dropdown-menu glass-panel">
+            <button
+              class="dropdown-item"
+              class:selected={$currentView === "renamer"}
+              on:click={() => { currentView.set("renamer"); closeDropdowns(); }}
+            >
+              <div class="dropdown-item-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+              </div>
+              <div class="item-text">
+                <span class="item-title">Renomear</span>
+                <span class="item-desc">Padronização semântica por IA</span>
+              </div>
+            </button>
+
+            <button
+              class="dropdown-item"
+              class:selected={$currentView === "duplicates"}
+              on:click={() => { currentView.set("duplicates"); closeDropdowns(); }}
+            >
+              <div class="dropdown-item-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </div>
+              <div class="item-text">
+                <span class="item-title">Duplicatas</span>
+                <span class="item-desc">Detecção view-first com descarte seguro</span>
+              </div>
+            </button>
+
+            <button
+              class="dropdown-item"
+              class:selected={$currentView === "history"}
+              on:click={() => { currentView.set("history"); closeDropdowns(); }}
+            >
+              <div class="dropdown-item-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+              <div class="item-text">
+                <span class="item-title">Histórico</span>
+                <span class="item-desc">Auditoria, árvores e estatísticas</span>
+              </div>
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <!-- 3. Dropdown Gerenciar (Regras, Categorias, Tags) -->
       <div class="dropdown-container">
         <button
           class="nav-btn dropdown-trigger"
@@ -276,6 +370,9 @@
             <line x1="17" y1="16" x2="23" y2="16"></line>
           </svg>
           <span>Gerenciar</span>
+          {#if $aiFolderSuggestions.length > 0}
+            <span class="nav-alert-dot" title="Novas sugestões de pastas disponíveis"></span>
+          {/if}
           <svg
             width="12"
             height="12"
@@ -294,18 +391,23 @@
           <div class="dropdown-menu glass-panel">
             <button
               class="dropdown-item"
-              class:selected={$currentView === "tags"}
-              on:click={() => { currentView.set("tags"); closeDropdowns(); }}
+              class:selected={$currentView === "rules"}
+              on:click={() => { currentView.set("rules"); closeDropdowns(); }}
             >
               <div class="dropdown-item-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
                 </svg>
               </div>
               <div class="item-text">
-                <span class="item-title">Tags</span>
-                <span class="item-desc">Etiquetas semânticas e cores</span>
+                <div class="item-title-with-badge">
+                  <span class="item-title">Regras & Heurísticas</span>
+                  {#if $aiFolderSuggestions.length > 0}
+                    <span class="menu-alert-pill">{$aiFolderSuggestions.length}</span>
+                  {/if}
+                </div>
+                <span class="item-desc">Extensões, subpastas e regras padrão</span>
               </div>
             </button>
 
@@ -322,23 +424,24 @@
               </div>
               <div class="item-text">
                 <span class="item-title">Categorias</span>
-                <span class="item-desc">Pastas destino e hierarquia</span>
+                <span class="item-desc">Pastas de destino e mesclagem</span>
               </div>
             </button>
 
             <button
               class="dropdown-item"
-              class:selected={$currentView === "rules"}
-              on:click={() => { currentView.set("rules"); closeDropdowns(); }}
+              class:selected={$currentView === "tags"}
+              on:click={() => { currentView.set("tags"); closeDropdowns(); }}
             >
               <div class="dropdown-item-icon">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
                 </svg>
               </div>
               <div class="item-text">
-                <span class="item-title">Regras</span>
-                <span class="item-desc">Personalizadas, heurísticas e IA</span>
+                <span class="item-title">Tags</span>
+                <span class="item-desc">Etiquetas semânticas e cores</span>
               </div>
             </button>
           </div>
@@ -787,6 +890,30 @@
     font-size: 0.72rem;
     color: var(--text-muted);
     line-height: 1.2;
+  }
+
+  .item-title-with-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .nav-alert-dot {
+    width: 7px;
+    height: 7px;
+    background: #d14d41;
+    border-radius: 50%;
+    margin-left: -0.1rem;
+    margin-right: 0.1rem;
+  }
+
+  .menu-alert-pill {
+    background: #d14d41;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.05rem 0.35rem;
+    border-radius: var(--radius-full);
   }
 
   .counter-badge {

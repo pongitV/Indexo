@@ -27,6 +27,7 @@ export interface ClassifiedFile {
   size_bytes?: number;
   is_already_organized?: boolean;
   original_relative_folder?: string | null;
+  is_unidentified?: boolean;
 }
 
 export interface ClassifyProgressPayload {
@@ -298,6 +299,10 @@ export function onClassifyProgress(cb: (payload: ClassifyProgressPayload) => voi
   return listen<ClassifyProgressPayload>("classify://progress", (e) => cb(e.payload));
 }
 
+export function onClassifySuggestions(cb: (payload: any[]) => void): Promise<UnlistenFn> {
+  return listen<any[]>("classify://suggestions", (e) => cb(e.payload));
+}
+
 // ==========================================
 // DEDUPLICADOR INTELIGENTE (VIEW-FIRST)
 // ==========================================
@@ -342,11 +347,14 @@ export async function resolveDuplicatesActions(actions: DuplicateResolveAction[]
 export interface CustomRule {
   id: string;
   name: string;
-  condition_field: "extension" | "filename_contains" | "content_contains" | "size_greater" | "size_smaller";
-  condition_operator: "equals" | "contains" | "starts_with" | "ends_with" | "greater_than" | "less_than";
+  condition_field: "extension" | "filename_contains" | "content_contains" | "size_greater" | "size_smaller" | "parent_folder";
+  condition_operator: "equals" | "contains" | "starts_with" | "ends_with" | "greater_than" | "less_than" | "regex_match";
   condition_value: string;
   action_type: "move_category" | "rename_pattern" | "apply_tag";
   action_value: string;
+  subfolder_behavior: "auto" | "none" | "by_year" | "by_pattern";
+  original_config?: string | null;
+  version: number;
   is_enabled: boolean;
   priority: number;
   created_at: string;
@@ -360,7 +368,24 @@ export interface CreateCustomRuleInput {
   condition_value: string;
   action_type: string;
   action_value: string;
+  subfolder_behavior?: string;
   priority?: number | null;
+}
+
+export interface CustomRuleHistoryRecord {
+  id: string;
+  rule_id: string;
+  name: string;
+  condition_field: string;
+  condition_operator: string;
+  condition_value: string;
+  action_type: string;
+  action_value: string;
+  subfolder_behavior: string;
+  priority: number;
+  version: number;
+  saved_at: string;
+  note?: string | null;
 }
 
 export interface LearnedRuleInfo {
@@ -389,12 +414,54 @@ export async function updateCustomRule(rule: CustomRule): Promise<void> {
   return invoke<void>("update_custom_rule", { rule });
 }
 
+export async function restoreCustomRuleOriginal(id: string): Promise<CustomRule> {
+  return invoke<CustomRule>("restore_custom_rule_original", { id });
+}
+
+export async function getCustomRuleHistory(ruleId: string): Promise<CustomRuleHistoryRecord[]> {
+  return invoke<CustomRuleHistoryRecord[]>("get_custom_rule_history", { ruleId });
+}
+
 export async function deleteCustomRule(id: string): Promise<void> {
   return invoke<void>("delete_custom_rule", { id });
 }
 
 export async function toggleCustomRule(id: string, isEnabled: boolean): Promise<void> {
   return invoke<void>("toggle_custom_rule", { id, isEnabled });
+}
+
+export interface BuiltinCategoryConfig {
+  id: string;
+  group_name: string;
+  display_name: string;
+  target_path: string;
+  description: string;
+  extensions: string[];
+  keywords: string[];
+  subfolders: string[];
+  subfolder_behavior: "auto" | "none" | "by_year" | "by_pattern";
+  is_enabled: boolean;
+  is_customized: boolean;
+}
+
+export async function getBuiltinRulesConfig(): Promise<BuiltinCategoryConfig[]> {
+  return invoke<BuiltinCategoryConfig[]>("get_builtin_rules_config");
+}
+
+export async function saveBuiltinRuleConfig(config: BuiltinCategoryConfig): Promise<void> {
+  return invoke<void>("save_builtin_rule_config", { config });
+}
+
+export async function resetBuiltinRuleConfig(id: string): Promise<BuiltinCategoryConfig> {
+  return invoke<BuiltinCategoryConfig>("reset_builtin_rule_config", { id });
+}
+
+export async function resetAllBuiltinRulesConfig(): Promise<BuiltinCategoryConfig[]> {
+  return invoke<BuiltinCategoryConfig[]>("reset_all_builtin_rules_config");
+}
+
+export async function clearAllUserData(confirmation: string): Promise<void> {
+  return invoke<void>("clear_all_user_data", { confirmation });
 }
 
 export async function listAllLearnedRules(): Promise<LearnedRuleInfo[]> {

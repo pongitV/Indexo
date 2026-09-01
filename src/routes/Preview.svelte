@@ -27,11 +27,15 @@
   } from "../lib/api";
   import FileTreeNode, { type TreeNodeData } from "../lib/FileTreeNode.svelte";
   import FilePreviewModal from "../lib/FilePreviewModal.svelte";
+  import UnidentifiedReviewModal from "../lib/UnidentifiedReviewModal.svelte";
 
   let searchQuery = "";
   let isApplying = false;
   let isUndoing = false;
   let showConfirmModal = false;
+  let showUnidentifiedModal = false;
+
+  $: unidentifiedCount = $classifiedFiles.filter((f) => f.is_unidentified || f.suggested_category.startsWith("Nao-Identificados")).length;
 
   // Tag & Category Modals State
   let showTagModal = false;
@@ -945,6 +949,22 @@
     </label>
 
     <div class="action-buttons">
+      {#if unidentifiedCount > 0}
+        <button
+          class="unidentified-alert-btn"
+          title="Abrir painel de revisão manual para arquivos e pastas não identificados"
+          on:click={() => (showUnidentifiedModal = true)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>Não Identificados</span>
+          <span class="unidentified-badge">{unidentifiedCount}</span>
+        </button>
+      {/if}
+
       <button
         class="secondary-btn"
         title="Abrir ou fechar todas as pastas de ambas as árvores"
@@ -1805,7 +1825,47 @@
   onOpenInExplorer={handleOpenInExplorer}
 />
 
+<!-- Modal de Revisão Manual de Itens Não Identificados -->
+<UnidentifiedReviewModal
+  show={showUnidentifiedModal}
+  onClose={() => (showUnidentifiedModal = false)}
+  onSaved={async () => {
+    if ($alsoRenameInOrganization) {
+      await loadProposedNames();
+    }
+  }}
+/>
+
 <style>
+  .unidentified-alert-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(209, 77, 65, 0.12);
+    color: #d14d41;
+    border: 1px solid rgba(209, 77, 65, 0.4);
+    border-radius: var(--radius-md);
+    padding: 0.45rem 0.85rem;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .unidentified-alert-btn:hover {
+    background: rgba(209, 77, 65, 0.2);
+    border-color: #d14d41;
+  }
+
+  .unidentified-badge {
+    background: #d14d41;
+    color: white;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+  }
+
   .preview-layout {
     flex: 1;
     display: flex;

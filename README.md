@@ -113,20 +113,29 @@ flowchart TD
 * Sugestão inteligente de qual arquivo manter (*Melhor nome limpo*, *Maior resolução*, *Mais recente*).
 * Descarte seguro enviando itens para a **Lixeira do Windows** ou exclusão permanente opcional.
 
-### 3. Construtor de Regras Personalizadas, Padrão e IA
-* Crie regras com operadores lógicos (*Igual a*, *Contém*, *Começa com*, *Termina com*, *Maior que*, *Menor que*).
-* Consulte todas as heurísticas embutidas do sistema.
-* Audite e exclua regras que a IA aprendeu a partir de correções manuais anteriores.
+### 3. Construtor de Regras, Heurísticas Padrão (Editáveis) e Aprendizado por IA
+* **Edição Completa de Heurísticas Padrão**: Personalize extensões reconhecidas, subpastas ativas, modo de agrupamento (`Auto`, `Por Ano`, etc.) e palavras-chave de cada categoria nativa do sistema (`Media`, `Executaveis`, `Documentos`, `Projetos`, etc.).
+* **Restauração Granular por Seção & Global**: Reverta apenas as extensões, apenas as subpastas ou restaure toda a categoria ou todo o catálogo de fábrica com 1 clique.
+* **Construtor Visual de Regras Personalizadas**: Crie regras condicionais prioritárias (*SE [campo] [operador] [valor] ENTÃO [ação]*).
+* **Auditoria de Regras Aprendidas por IA**: O Indexo aprende automaticamente a partir de correções manuais no Preview ou no modal de Não-Identificados, sem nada fixo no código.
 
-### 4. Renomeador Inteligente por Contexto
+### 4. Taxonomia Padronizada Sem Espaços & Subpastas Especializadas
+* Organização estrita usando hífens em vez de espaços:
+  - `Media/Imagens-Fotografias`, `Media/Videos-Gravacoes`, `Media/Audios-Musicas`
+  - `Executaveis/Jogos-Emuladores-ROMs` (com subpastas dedicadas para *Nintendo-NES*, *Super-Nintendo-SNES*, *Nintendo-64*, *Nintendo-Switch*, *PlayStation*, *Sega*, etc.), `Executaveis/Aplicativos-Utilitarios`, `Executaveis/Instaladores-Setups`
+  - `Documentos/Fiscais-Pessoais`, `Documentos/Trabalho`, `Documentos/Estudos`
+  - `Projetos/Repositorios-GitHub`, `Projetos/Repositorios-Locais`, `Projetos/Modelos-3D-CAD`, `Projetos/Scripts-Automacoes`
+
+### 5. Renomeador Inteligente por Contexto
 * Padronização em lote removendo prefixos de câmeras e mensageiros (`IMG_`, `WA_`, `Scan_`).
 * Sugestão automática de nomes claros com datas formatadas e herança do contexto da pasta.
 * Histórico completo de renomeações prévias com restauração direta.
 
-### 5. Histórico, Árvores Comparativas e Estatísticas
-* Registro cronológico de todas as organizações e renomeações realizadas.
+### 6. Histórico, Árvores Comparativas e Estatísticas
+* Registro cronológico de todas as organizações e renomeações realizadas com botão de **Desfazer (Undo)**.
 * 3 visualizações por sessão: **Árvore Proposta**, **Categorias Criadas**, **Tags Criadas** e **Arquivos Movidos**.
-* Painel de **Estatísticas & Armazenamento**: Cálculo do total de espaço organizado, total de arquivos catalogados e barra proporcional de volume por categoria.
+* Painel de **Estatísticas & Armazenamento**: Total de espaço organizado, contagem de arquivos e gráficos de volume.
+* **Redefinição Total de Dados com Confirmação Segura**: Opção nas Configurações para zerar o banco de dados e perfis locais digitando `"sim"`.
 
 ---
 
